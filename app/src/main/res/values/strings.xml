@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">BharatTube</string>
+    <string name="tagline_global">Global Video, Shorts &amp; Creator Economy</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_explore">Explore</string>
+    <string name="nav_upload">Upload</string>
+    <string name="nav_shorts">Shorts</string>
+    <string name="nav_profile">Profile</string>
+    <string name="action_search">Search BharatTube</string>
+    <string name="action_notifications">Notifications</string>
+    <string name="action_back">Navigate back</string>
+    <string name="cd_brand_mark">BharatTube emblem</string>
+    <string name="cd_toggle_theme">Toggle dark and light mode</string>
+    <string name="default_revenue_rule">50% Creator / 50% BharatTube</string>
+    <string name="india_payout_threshold">₹1,000</string>
+</resources>

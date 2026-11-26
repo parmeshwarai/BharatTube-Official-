@@ -1,0 +1,6 @@
+{
+  "name": "BharatTube",
+  "description": "Global video sharing, Shorts, creator studio, live streaming, monetization, and community platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
