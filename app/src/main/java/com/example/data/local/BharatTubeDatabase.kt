@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.AdCampaignEntity
 import com.example.data.model.AuditLogEntity
 import com.example.data.model.ChannelEntity
@@ -46,7 +48,7 @@ import com.example.data.model.WatchHistoryEntity
         SearchHistoryEntity::class,
         PlatformSettingsEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class BharatTubeDatabase : RoomDatabase() {
@@ -56,13 +58,24 @@ abstract class BharatTubeDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: BharatTubeDatabase? = null
 
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE users ADD COLUMN bannerUri TEXT NOT NULL DEFAULT 'drawable:img_hero_creators'"
+                )
+            }
+        }
+
         fun getInstance(context: Context): BharatTubeDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     BharatTubeDatabase::class.java,
                     "bharattube_local.db"
-                ).build().also { INSTANCE = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }
@@ -344,6 +357,30 @@ object SeedDataPopulator {
                 musicAttribution = "Tech Minimal Beat (Licensed)",
                 netRevenueInr = 410.0,
                 createdAt = now - 3_600_000L * 14
+            ),
+            VideoEntity(
+                id = "vid_5",
+                channelId = "ch_bharattube_tech",
+                channelName = "Aarav Tech Lab",
+                channelHandle = "@aaravtech",
+                title = "2-Minute Quick Mic Setup for Crisp Creator Voiceovers",
+                description = "Fast under-3-minute tutorial covering USB & XLR gain staging for beginner creators.",
+                thumbnailKey = "drawable:img_thumb_tech",
+                videoUri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                category = "Technology",
+                hashtags = "#CreatorTips #AudioSetup #BharatTube",
+                languageCode = "hi",
+                countryCode = "IN",
+                format = VideoFormat.LONG.name,
+                visibility = VideoVisibility.PUBLIC.name,
+                durationSeconds = 135,
+                viewCount = 42_180L,
+                likeCount = 3_920L,
+                chaptersSummary = "0:00 Mic Placement • 1:05 Gain Check",
+                captionsText = "Quick under-3-minute guide to clean creator audio.",
+                musicAttribution = "Original Licensed Audio",
+                netRevenueInr = 680.0,
+                createdAt = now - 3_600_000L * 2
             )
         )
         dao.insertVideos(videos)

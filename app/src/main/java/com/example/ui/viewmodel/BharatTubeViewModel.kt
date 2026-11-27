@@ -234,6 +234,13 @@ class BharatTubeViewModel(
         }
     }
 
+    fun updateChannel(channel: ChannelEntity) {
+        viewModelScope.launch {
+            repository.updateChannel(channel)
+            _snackbarMessage.value = "Channel branding updated"
+        }
+    }
+
     fun createChannel(
         name: String,
         handle: String,

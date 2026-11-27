@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,12 +28,15 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AddBusiness
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,11 +66,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.local.UserPreferences
 import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.UserProfileEntity
+import com.example.ui.components.AppShareBottomSheet
+import com.example.ui.components.BharatTubeThumbnail
+import com.example.ui.components.CropTarget
+import com.example.ui.components.ImageCropDialog
 import com.example.ui.components.IntegrationDisclosureBanner
 import com.example.ui.theme.EmeraldVerified
 import com.example.ui.theme.LotusCoral
@@ -92,86 +105,267 @@ fun ProfileScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var showRegionDialog by remember { mutableStateOf(false) }
+    var showAppShareSheet by remember { mutableStateOf(false) }
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCropTarget by remember { mutableStateOf(CropTarget.LOGO_CIRCLE) }
+
+    val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            pendingCropTarget = CropTarget.LOGO_CIRCLE
+            pendingCropUri = uri
+        }
+    }
+    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            pendingCropTarget = CropTarget.BANNER_WIDE
+            pendingCropUri = uri
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // User Profile Card
+        // YouTube-style User Profile Card: Wide Banner at Top + Circular Logo + Name Below
         item {
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(58.dp)
-                                .clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(SaffronFlame, LotusCoral))),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = (user?.username?.take(1) ?: "B").uppercase(),
-                                color = Color.White,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = user?.username ?: "Loading...",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Top Wide Channel Banner
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(140.dp)
+                                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                                    .clickable {
+                                        bannerPicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
+                                    .testTag("profile_banner_box")
+                            ) {
+                                BharatTubeThumbnail(
+                                    thumbnailKey = user?.bannerUri?.ifBlank { "drawable:img_hero_creators" } ?: "drawable:img_hero_creators",
+                                    contentDescription = "Profile Channel Banner",
+                                    modifier = Modifier.fillMaxSize()
                                 )
-                                if (user?.isAdmin == true) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Surface(color = EmeraldVerified.copy(alpha = 0.2f), shape = RoundedCornerShape(6.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(Color(0x55000000), Color.Transparent, Color(0x66000000))
+                                            )
+                                        )
+                                )
+                                Surface(
+                                    onClick = {
+                                        bannerPicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color.Black.copy(alpha = 0.62f),
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(10.dp)
+                                        .testTag("edit_profile_banner_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CameraAlt,
+                                            contentDescription = "Change Channel Banner",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(Modifier.width(5.dp))
                                         Text(
-                                            "ADMIN",
-                                            color = EmeraldVerified,
+                                            text = "Banner",
+                                            color = Color.White,
                                             style = MaterialTheme.typography.labelSmall,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            fontWeight = FontWeight.SemiBold
                                         )
                                     }
                                 }
                             }
-                            Text(
-                                text = "${user?.handle ?: ""} • ID: ${user?.uid ?: ""} • ${prefs.preferredCountry}/${prefs.preferredLanguage.uppercase()}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(Modifier.height(46.dp))
                         }
-                        IconButton(onClick = { showEditDialog = true }, modifier = Modifier.testTag("edit_profile_button")) {
+
+                        // Overlapping Circular Profile Photo / Logo
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .size(92.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                    .background(Brush.linearGradient(listOf(SaffronFlame, LotusCoral)))
+                                    .clickable {
+                                        logoPicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
+                                    .testTag("profile_logo_box"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!user?.avatarUri.isNullOrBlank()) {
+                                    BharatTubeThumbnail(
+                                        thumbnailKey = user!!.avatarUri,
+                                        contentDescription = "Profile Logo",
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Text(
+                                        text = (user?.username?.take(1) ?: "B").uppercase(),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                onClick = {
+                                    logoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                shape = CircleShape,
+                                color = SaffronFlame,
+                                shadowElevation = 3.dp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(30.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                    .testTag("edit_profile_logo_button")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.CameraAlt,
+                                        contentDescription = "Change Profile Photo",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { showEditDialog = true },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 6.dp)
+                                .testTag("edit_profile_button")
+                        ) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit profile")
                         }
                     }
-                    if (!user?.bio.isNullOrBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(user!!.bio, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = onCreateChannel,
-                            colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
-                            modifier = Modifier.weight(1f).testTag("profile_create_channel_button")
+
+                    // User Name, Handle, Bio & Quick Controls below Banner & Logo
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 6.dp, bottom = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(Icons.Filled.AddBusiness, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Create Channel")
+                            Text(
+                                text = user?.username ?: "Loading...",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                            if (user?.isAdmin == true) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(color = EmeraldVerified.copy(alpha = 0.2f), shape = RoundedCornerShape(6.dp)) {
+                                    Text(
+                                        "ADMIN",
+                                        color = EmeraldVerified,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
-                        OutlinedButton(
-                            onClick = { showAccountDialog = true },
-                            modifier = Modifier.weight(1f).testTag("switch_account_button")
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "${user?.handle ?: ""} • ID: ${user?.uid ?: ""} • ${prefs.preferredCountry}/${prefs.preferredLanguage.uppercase()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        if (!user?.bio.isNullOrBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = user!!.bio,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Accounts")
+                            OutlinedButton(
+                                onClick = {
+                                    logoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                modifier = Modifier.weight(1f).testTag("gallery_logo_button")
+                            ) {
+                                Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Change Logo", maxLines = 1)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    bannerPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                modifier = Modifier.weight(1f).testTag("gallery_banner_button")
+                            ) {
+                                Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Change Banner", maxLines = 1)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = onCreateChannel,
+                                colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
+                                modifier = Modifier.weight(1f).testTag("profile_create_channel_button")
+                            ) {
+                                Icon(Icons.Filled.AddBusiness, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Create Channel")
+                            }
+                            OutlinedButton(
+                                onClick = { showAccountDialog = true },
+                                modifier = Modifier.weight(1f).testTag("switch_account_button")
+                            ) {
+                                Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Accounts")
+                            }
                         }
                     }
                 }
@@ -288,7 +482,11 @@ fun ProfileScreen(
             )
         }
 
-        // Safety & Privacy Controls
+        // Settings Section (Safety, Privacy & App Share at the very bottom)
+        item {
+            Text("Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -322,6 +520,39 @@ fun ProfileScreen(
                 }
             }
         }
+
+        // Last option in Settings: App Share
+        item {
+            ProfileNavTile(
+                icon = Icons.Filled.Share,
+                title = "App Share",
+                subtitle = "App Share Karo - Dosto ko BharatTube bhejo",
+                tag = "settings_app_share",
+                onClick = { showAppShareSheet = true }
+            )
+        }
+    }
+
+    if (showAppShareSheet) {
+        AppShareBottomSheet(onDismiss = { showAppShareSheet = false })
+    }
+
+    pendingCropUri?.let { uri ->
+        ImageCropDialog(
+            sourceUri = uri,
+            cropTarget = pendingCropTarget,
+            onDismiss = { pendingCropUri = null },
+            onCropped = { savedPath ->
+                user?.let { current ->
+                    val updated = when (pendingCropTarget) {
+                        CropTarget.LOGO_CIRCLE -> current.copy(avatarUri = savedPath)
+                        CropTarget.BANNER_WIDE -> current.copy(bannerUri = savedPath)
+                    }
+                    onUpdateProfile(updated)
+                }
+                pendingCropUri = null
+            }
+        )
     }
 
     if (showEditDialog && user != null) {

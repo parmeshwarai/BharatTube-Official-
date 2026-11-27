@@ -50,6 +50,7 @@ import com.example.data.model.ChannelEntity
 import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoFormat
+import com.example.ads.AdMobBannerAd
 import com.example.ui.components.BharatTubeThumbnail
 import com.example.ui.components.IntegrationDisclosureBanner
 import com.example.ui.components.VideoFeedCard
@@ -78,11 +79,12 @@ fun HomeScreen(
     val longAndLiveVideos = recommendedVideos.filter { it.format != VideoFormat.SHORT.name }
     val subscribedCount = channels.count { it.isSubscribedByMe }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         // Category Chips + Subscriptions Quick Pill
         item {
             LazyRow(
@@ -362,6 +364,10 @@ fun HomeScreen(
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
+        }
+        }
+        if (settings.advertisementsEnabled && settings.bannerAdsEnabled) {
+            AdMobBannerAd()
         }
     }
 }

@@ -27,6 +27,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.ads.AdMobInterstitialController
+import com.example.data.model.VideoEntity
 import com.example.ui.components.BharatTab
 import com.example.ui.components.BharatTubeBottomBar
 import com.example.ui.components.BharatTubeTopBar
@@ -51,9 +53,14 @@ import com.example.ui.theme.BharatTubeTheme
 import com.example.ui.viewmodel.BharatTubeViewModel
 
 class MainActivity : ComponentActivity() {
+    private lateinit var adMobController: AdMobInterstitialController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        adMobController = AdMobInterstitialController(applicationContext).apply {
+            initializeAndPreload()
+        }
         setContent {
             val viewModel: BharatTubeViewModel = viewModel(factory = BharatTubeViewModel.Factory)
             val prefs by viewModel.preferences.collectAsStateWithLifecycle()
@@ -61,6 +68,8 @@ class MainActivity : ComponentActivity() {
             BharatTubeTheme(darkTheme = prefs.isDarkTheme) {
                 BharatTubeApp(
                     viewModel = viewModel,
+                    activity = this,
+                    adMobController = adMobController,
                     onEnterPip = { enterPipIfSupported() }
                 )
             }
@@ -80,6 +89,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun BharatTubeApp(
     viewModel: BharatTubeViewModel,
+    activity: MainActivity,
+    adMobController: AdMobInterstitialController,
     onEnterPip: () -> Unit
 ) {
     val navController = rememberNavController()
@@ -117,6 +128,20 @@ fun BharatTubeApp(
         snackbarMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearSnackbar()
+        }
+    }
+
+    val openVideoWithAd: (VideoEntity) -> Unit = { video ->
+        if (video.isLive) {
+            if (settings.advertisementsEnabled) {
+                adMobController.showThenProceed(activity) {
+                    navController.navigate("live/${video.id}")
+                }
+            } else {
+                navController.navigate("live/${video.id}")
+            }
+        } else {
+            navController.navigate("player/${video.id}")
         }
     }
 
@@ -187,9 +212,9 @@ fun BharatTubeApp(
                         countryCode = prefs.preferredCountry,
                         languageCode = prefs.preferredLanguage,
                         onSelectCategory = viewModel::selectCategory,
-                        onOpenVideo = { v -> navController.navigate("player/${v.id}") },
+                        onOpenVideo = openVideoWithAd,
                         onOpenShort = { idx -> navController.navigate("shorts?index=$idx") },
-                        onOpenLive = { v -> navController.navigate("live/${v.id}") },
+                        onOpenLive = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleWatchLater = viewModel::toggleWatchLater,
                         onOpenCreateChannel = { navController.navigate("create_channel") },
@@ -205,7 +230,7 @@ fun BharatTubeApp(
                         currentLanguage = prefs.preferredLanguage,
                         onSelectCountry = viewModel::setCountry,
                         onSelectLanguage = viewModel::setLanguage,
-                        onOpenVideo = { v -> navController.navigate("player/${v.id}") },
+                        onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleSubscribe = viewModel::toggleSubscribe,
                         onToggleWatchLater = viewModel::toggleWatchLater
@@ -306,7 +331,7 @@ fun BharatTubeApp(
                         onAddComment = viewModel::addComment,
                         onLikeComment = viewModel::likeComment,
                         onAddToPlaylist = viewModel::addVideoToPlaylist,
-                        onOpenVideo = { v -> navController.navigate("player/${v.id}") },
+                        onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onSubmitReport = viewModel::submitReport,
                         onEnterPip = onEnterPip
@@ -343,9 +368,10 @@ fun BharatTubeApp(
                         onBack = { navController.popBackStack() },
                         onToggleSubscribe = viewModel::toggleSubscribe,
                         onToggleBell = viewModel::toggleChannelBell,
-                        onOpenVideo = { v -> navController.navigate("player/${v.id}") },
+                        onOpenVideo = openVideoWithAd,
                         onToggleWatchLater = viewModel::toggleWatchLater,
-                        onCreatePost = viewModel::createCommunityPost
+                        onCreatePost = viewModel::createCommunityPost,
+                        onUpdateChannel = viewModel::updateChannel
                     )
                 }
 
@@ -410,7 +436,7 @@ fun BharatTubeApp(
                         onBack = { navController.popBackStack() },
                         onRecordSearch = viewModel::recordSearch,
                         onClearHistory = viewModel::clearSearchHistory,
-                        onOpenVideo = { v -> navController.navigate("player/${v.id}") },
+                        onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleWatchLater = viewModel::toggleWatchLater,
                         onVoiceUnavailable = { viewModel.showMessage("Voice search requires Google Speech Services on this device.") }
@@ -455,7 +481,7 @@ fun BharatTubeApp(
                         onClearHistory = viewModel::clearWatchHistory,
                         onCreatePlaylist = viewModel::createPlaylist,
                         onDeletePlaylist = viewModel::deletePlaylist,
-                        onOpenVideo = { v -> navController.navigate("player/${v.id}") },
+                        onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleWatchLater = viewModel::toggleWatchLater
                     )

@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -58,6 +59,8 @@ fun BharatTubeVideoPlayer(
     qualityLabel: String,
     isShortVertical: Boolean = false,
     autoPlayNext: Boolean = false,
+    isAdPlaying: Boolean = false,
+    onProgressUpdate: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> },
     onSavePosition: (Long) -> Unit,
     onVideoEnded: () -> Unit = {},
     onSelectQuality: (String) -> Unit = {},
@@ -79,7 +82,17 @@ fun BharatTubeVideoPlayer(
                 seekTo(initialPositionMs)
             }
             prepare()
-            playWhenReady = true
+            playWhenReady = !isAdPlaying
+        }
+    }
+
+    LaunchedEffect(exoPlayer, isAdPlaying) {
+        if (isAdPlaying) {
+            exoPlayer.playWhenReady = false
+            exoPlayer.pause()
+        } else {
+            exoPlayer.playWhenReady = true
+            exoPlayer.play()
         }
     }
 
@@ -87,11 +100,18 @@ fun BharatTubeVideoPlayer(
         exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
     }
 
-    LaunchedEffect(exoPlayer) {
+    LaunchedEffect(exoPlayer, isAdPlaying) {
+        var tick = 0
         while (true) {
-            delay(2500L)
-            if (exoPlayer.isPlaying) {
-                onSavePosition(exoPlayer.currentPosition)
+            delay(500L)
+            if (!isAdPlaying) {
+                val rawDur = exoPlayer.duration
+                val safeDur = if (rawDur != C.TIME_UNSET && rawDur > 0L) rawDur else 0L
+                onProgressUpdate(exoPlayer.currentPosition, safeDur)
+                tick++
+                if (tick % 5 == 0 && exoPlayer.isPlaying) {
+                    onSavePosition(exoPlayer.currentPosition)
+                }
             }
         }
     }
@@ -117,7 +137,7 @@ fun BharatTubeVideoPlayer(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
-                    useController = !isShortVertical
+                    useController = !isShortVertical && !isAdPlaying
                     resizeMode = if (isShortVertical) {
                         AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     } else {
@@ -133,11 +153,12 @@ fun BharatTubeVideoPlayer(
                 if (view.player !== exoPlayer) {
                     view.player = exoPlayer
                 }
+                view.useController = !isShortVertical && !isAdPlaying
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        if (!isShortVertical) {
+        if (!isShortVertical && !isAdPlaying) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)

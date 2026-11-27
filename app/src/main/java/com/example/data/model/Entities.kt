@@ -15,6 +15,7 @@ data class UserProfileEntity(
     val countryCode: String = "IN",
     val languageCode: String = "hi",
     val avatarUri: String = "",
+    val bannerUri: String = "drawable:img_hero_creators",
     val isMinor: Boolean = false,
     val twoFactorEnabled: Boolean = false,
     val restrictedMode: Boolean = false,

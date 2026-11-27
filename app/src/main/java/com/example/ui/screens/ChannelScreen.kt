@@ -1,9 +1,12 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.Button
@@ -37,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -62,6 +67,8 @@ import com.example.data.model.CommunityPostEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoFormat
 import com.example.ui.components.BharatTubeThumbnail
+import com.example.ui.components.CropTarget
+import com.example.ui.components.ImageCropDialog
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -80,11 +87,27 @@ fun ChannelScreen(
     onToggleBell: (ChannelEntity) -> Unit,
     onOpenVideo: (VideoEntity) -> Unit,
     onToggleWatchLater: (VideoEntity) -> Unit,
-    onCreatePost: (ChannelEntity, String) -> Unit
+    onCreatePost: (ChannelEntity, String) -> Unit,
+    onUpdateChannel: (ChannelEntity) -> Unit = {}
 ) {
     val channel by observeChannel(channelId).collectAsStateWithLifecycle(initialValue = null)
     var selectedTab by remember { mutableIntStateOf(0) }
     var postDraft by remember { mutableStateOf("") }
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCropTarget by remember { mutableStateOf(CropTarget.LOGO_CIRCLE) }
+
+    val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            pendingCropTarget = CropTarget.LOGO_CIRCLE
+            pendingCropUri = uri
+        }
+    }
+    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            pendingCropTarget = CropTarget.BANNER_WIDE
+            pendingCropUri = uri
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -101,6 +124,7 @@ fun ChannelScreen(
         val ch = channel ?: return@Scaffold Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
             Text("Channel not found")
         }
+        val isOwner = ch.ownerUserId == currentUserId
         val channelVideos = allVideos.filter { it.channelId == ch.id && it.format != VideoFormat.SHORT.name }
         val channelShorts = allVideos.filter { it.channelId == ch.id && it.format == VideoFormat.SHORT.name }
         val channelPosts = communityPosts.filter { it.channelId == ch.id }
@@ -111,30 +135,114 @@ fun ChannelScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().height(130.dp)) {
-                    BharatTubeThumbnail(ch.bannerUri, ch.name, Modifier.fillMaxSize())
-                }
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Box(
                             modifier = Modifier
-                                .size(60.dp)
+                                .fillMaxWidth()
+                                .height(136.dp)
+                                .then(
+                                    if (isOwner) {
+                                        Modifier.clickable {
+                                            bannerPicker.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
+                                        }
+                                    } else Modifier
+                                )
+                        ) {
+                            BharatTubeThumbnail(ch.bannerUri, ch.name, Modifier.fillMaxSize())
+                            if (isOwner) {
+                                Surface(
+                                    onClick = {
+                                        bannerPicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = Color.Black.copy(alpha = 0.62f),
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(10.dp)
+                                        .testTag("edit_channel_banner_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.CameraAlt, contentDescription = "Edit Banner", tint = Color.White, modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(5.dp))
+                                        Text("Banner", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(38.dp))
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp)
+                            .size(76.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
                                 .clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(SaffronFlame, LotusCoral))),
+                                .border(3.dp, MaterialTheme.colorScheme.background, CircleShape)
+                                .background(Brush.linearGradient(listOf(SaffronFlame, LotusCoral)))
+                                .then(
+                                    if (isOwner) {
+                                        Modifier.clickable {
+                                            logoPicker.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
+                                        }
+                                    } else Modifier
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(ch.name.take(1), color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            if (ch.avatarUri.isNotBlank()) {
+                                BharatTubeThumbnail(ch.avatarUri, ch.name, Modifier.fillMaxSize())
+                            } else {
+                                Text(
+                                    ch.name.take(1).uppercase(),
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(ch.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Text(
-                                "${ch.handle} • ${BharatTubeCatalog.formatCompactCount(ch.subscriberCount)} subscribers",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        if (isOwner) {
+                            Surface(
+                                onClick = {
+                                    logoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                shape = CircleShape,
+                                color = SaffronFlame,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(26.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
+                                    .testTag("edit_channel_logo_button")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.CameraAlt, contentDescription = "Edit Logo", tint = Color.White, modifier = Modifier.size(14.dp))
+                                }
+                            }
                         }
                     }
+                }
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(ch.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "${ch.handle} • ${BharatTubeCatalog.formatCompactCount(ch.subscriberCount)} subscribers",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (ch.isSubscribedByMe) {
@@ -233,6 +341,25 @@ fun ChannelScreen(
             }
         }
     }
+
+    pendingCropUri?.let { uri ->
+        val ch = channel
+        ImageCropDialog(
+            sourceUri = uri,
+            cropTarget = pendingCropTarget,
+            onDismiss = { pendingCropUri = null },
+            onCropped = { savedPath ->
+                if (ch != null) {
+                    val updated = when (pendingCropTarget) {
+                        CropTarget.LOGO_CIRCLE -> ch.copy(avatarUri = savedPath)
+                        CropTarget.BANNER_WIDE -> ch.copy(bannerUri = savedPath)
+                    }
+                    onUpdateChannel(updated)
+                }
+                pendingCropUri = null
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -256,12 +383,20 @@ fun CreateChannelScreen(
     var socialLinks by remember { mutableStateOf("") }
     var avatarUri by remember { mutableStateOf("") }
     var bannerUri by remember { mutableStateOf("") }
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCropTarget by remember { mutableStateOf(CropTarget.LOGO_CIRCLE) }
 
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { avatarUri = it.toString() }
+        uri?.let {
+            pendingCropTarget = CropTarget.LOGO_CIRCLE
+            pendingCropUri = it
+        }
     }
     val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { bannerUri = it.toString() }
+        uri?.let {
+            pendingCropTarget = CropTarget.BANNER_WIDE
+            pendingCropUri = it
+        }
     }
 
     Scaffold(
@@ -351,5 +486,20 @@ fun CreateChannelScreen(
                 }
             }
         }
+    }
+
+    pendingCropUri?.let { uri ->
+        ImageCropDialog(
+            sourceUri = uri,
+            cropTarget = pendingCropTarget,
+            onDismiss = { pendingCropUri = null },
+            onCropped = { savedPath ->
+                when (pendingCropTarget) {
+                    CropTarget.LOGO_CIRCLE -> avatarUri = savedPath
+                    CropTarget.BANNER_WIDE -> bannerUri = savedPath
+                }
+                pendingCropUri = null
+            }
+        )
     }
 }

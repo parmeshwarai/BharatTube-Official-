@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.data.local.BharatTubeDao
@@ -156,6 +157,10 @@ class BharatTubeRepository(
 
     suspend fun updateUserProfile(user: UserProfileEntity) {
         dao.upsertUser(user)
+    }
+
+    suspend fun updateChannel(channel: ChannelEntity) {
+        dao.upsertChannel(channel)
     }
 
     suspend fun createChannel(
@@ -321,6 +326,22 @@ class BharatTubeRepository(
         }
     }
 
+    fun resolveVideoDurationSeconds(uriString: String, format: VideoFormat): Int {
+        val fallback = if (format == VideoFormat.SHORT) 45 else 320
+        if (uriString.isBlank() || uriString.startsWith("http")) return fallback
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, Uri.parse(uriString))
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val sec = (durationMs / 1000L).toInt()
+            if (sec > 0) sec else fallback
+        } catch (_: Exception) {
+            fallback
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
     suspend fun startChunkedUpload(
         user: UserProfileEntity,
         channel: ChannelEntity,
@@ -417,7 +438,10 @@ class BharatTubeRepository(
                         countryCode = completed.countryCode,
                         format = completed.format,
                         visibility = completed.visibility,
-                        durationSeconds = if (completed.format == VideoFormat.SHORT.name) 45 else 320,
+                        durationSeconds = resolveVideoDurationSeconds(
+                            completed.fileUri,
+                            if (completed.format == VideoFormat.SHORT.name) VideoFormat.SHORT else VideoFormat.LONG
+                        ),
                         captionsText = "Auto-captions pending cloud transcoding configuration.",
                         copyrightStatus = "SELF_DECLARED_CLEARED"
                     )

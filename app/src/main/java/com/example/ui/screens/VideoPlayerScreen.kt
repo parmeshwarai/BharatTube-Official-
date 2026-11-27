@@ -53,6 +53,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,16 +67,21 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ads.ActivePlayerAd
+import com.example.ads.LongVideoAdOverlay
+import com.example.ads.LongVideoAdPolicy
 import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.PlaylistEntity
 import com.example.data.model.VideoEntity
+import com.example.data.model.VideoFormat
 import com.example.ui.components.BharatTubeVideoPlayer
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,6 +149,58 @@ fun VideoPlayerScreen(
     var reportReason by remember { mutableStateOf("Copyright Infringement") }
     var reportDetails by remember { mutableStateOf("") }
     var translatedIds by remember { mutableStateOf(setOf<String>()) }
+    var observedMediaDurationSec by remember(currentVideo.id) { mutableIntStateOf(0) }
+    val effectiveDurationSec = if (observedMediaDurationSec > 0 && currentVideo.videoUri.startsWith("content://")) {
+        observedMediaDurationSec
+    } else {
+        currentVideo.durationSeconds
+    }
+    val adSchedule = remember(
+        effectiveDurationSec,
+        currentVideo.format,
+        currentVideo.isLive,
+        currentVideo.adEligible,
+        settings.advertisementsEnabled,
+        settings.preRollAdsEnabled,
+        settings.midRollAdsEnabled
+    ) {
+        LongVideoAdPolicy.buildSchedule(
+            durationSeconds = effectiveDurationSec,
+            isLongVideo = !currentVideo.isLive && currentVideo.format != VideoFormat.SHORT.name,
+            adEligible = currentVideo.adEligible,
+            adsEnabled = settings.advertisementsEnabled,
+            preRollEnabled = settings.preRollAdsEnabled,
+            midRollEnabled = settings.midRollAdsEnabled
+        )
+    }
+
+    var activeAd by remember(currentVideo.id) {
+        mutableStateOf<ActivePlayerAd?>(
+            if (adSchedule.showPreRoll) {
+                ActivePlayerAd.PreRoll(
+                    skipAfterSeconds = adSchedule.preRollSkipAfterSeconds,
+                    totalSeconds = adSchedule.preRollTotalSeconds
+                )
+            } else {
+                null
+            }
+        )
+    }
+    var adElapsedSeconds by remember(currentVideo.id) { mutableIntStateOf(0) }
+    var triggeredMidRolls by remember(currentVideo.id) {
+        val resumeSec = (currentVideo.lastPositionMs / 1000L).toInt()
+        mutableStateOf(adSchedule.midRollCueSeconds.filter { it < resumeSec }.toSet())
+    }
+
+    LaunchedEffect(activeAd) {
+        val current = activeAd ?: return@LaunchedEffect
+        adElapsedSeconds = 0
+        while (adElapsedSeconds < current.totalSeconds) {
+            delay(1000L)
+            adElapsedSeconds += 1
+        }
+        activeAd = null
+    }
 
     LaunchedEffect(currentVideo.id) {
         onRecordPlay(currentVideo)
@@ -167,25 +225,65 @@ fun VideoPlayerScreen(
                 .fillMaxSize()
                 .padding(if (isFullscreen) PaddingValues(0.dp) else padding)
         ) {
-            BharatTubeVideoPlayer(
-                videoUri = currentVideo.videoUri,
-                initialPositionMs = currentVideo.lastPositionMs,
-                captionsText = currentVideo.captionsText,
-                qualityLabel = currentVideo.playbackQuality,
-                autoPlayNext = autoPlayNext,
-                onSavePosition = { pos -> onSavePosition(currentVideo.id, pos) },
-                onVideoEnded = {
-                    if (autoPlayNext) upNext.firstOrNull()?.let { onOpenVideo(it) }
-                },
-                onSelectQuality = { q -> onSelectQuality(currentVideo.id, q) },
-                onEnterPip = onEnterPip,
-                onToggleFullscreen = { isFullscreen = !isFullscreen },
+            Box(
                 modifier = if (isFullscreen) {
                     Modifier.fillMaxSize()
                 } else {
                     Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 }
-            )
+            ) {
+                BharatTubeVideoPlayer(
+                    videoUri = currentVideo.videoUri,
+                    initialPositionMs = currentVideo.lastPositionMs,
+                    captionsText = currentVideo.captionsText,
+                    qualityLabel = currentVideo.playbackQuality,
+                    autoPlayNext = autoPlayNext,
+                    isAdPlaying = activeAd != null,
+                    onProgressUpdate = { posMs, durMs ->
+                        if (durMs > 0L) {
+                            val durSec = (durMs / 1000L).toInt()
+                            if (durSec > 0 && observedMediaDurationSec != durSec) {
+                                observedMediaDurationSec = durSec
+                            }
+                        }
+                        if (activeAd == null && adSchedule.midRollCueSeconds.isNotEmpty()) {
+                            val posSec = (posMs / 1000L).toInt()
+                            val pendingCue = LongVideoAdPolicy.findPendingMidRollCue(
+                                currentPositionSeconds = posSec,
+                                schedule = adSchedule,
+                                triggeredCues = triggeredMidRolls
+                            )
+                            if (pendingCue != null) {
+                                triggeredMidRolls = triggeredMidRolls + adSchedule.midRollCueSeconds.filter { it <= pendingCue }
+                                val breakIndex = adSchedule.midRollCueSeconds.indexOf(pendingCue) + 1
+                                activeAd = ActivePlayerAd.MidRoll(
+                                    cueSeconds = pendingCue,
+                                    totalSeconds = adSchedule.midRollDurationSeconds,
+                                    breakIndex = breakIndex.coerceAtLeast(1),
+                                    totalBreaks = adSchedule.midRollCueSeconds.size
+                                )
+                            }
+                        }
+                    },
+                    onSavePosition = { pos -> onSavePosition(currentVideo.id, pos) },
+                    onVideoEnded = {
+                        if (autoPlayNext) upNext.firstOrNull()?.let { onOpenVideo(it) }
+                    },
+                    onSelectQuality = { q -> onSelectQuality(currentVideo.id, q) },
+                    onEnterPip = onEnterPip,
+                    onToggleFullscreen = { isFullscreen = !isFullscreen },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                activeAd?.let { ad ->
+                    LongVideoAdOverlay(
+                        activeAd = ad,
+                        elapsedSeconds = adElapsedSeconds,
+                        onSkip = { activeAd = null },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
 
             if (!isFullscreen) {
                 LazyColumn(
@@ -193,23 +291,19 @@ fun VideoPlayerScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Pre-roll / Mid-roll Ad Gate Status
+                    // Pre-roll / Mid-roll Ad Schedule Status
                     if (settings.advertisementsEnabled && currentVideo.adEligible && (settings.preRollAdsEnabled || settings.midRollAdsEnabled)) {
                         item {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("player_ad_schedule_card")
                             ) {
                                 Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Campaign, contentDescription = null, tint = SaffronFlame, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = if (settings.metaAudienceNetworkEnabled) {
-                                            "Ad Slot: Meta Audience Network (${if (settings.metaTestMode) "Test Mode" else "Live"}) • 50/50 Creator Split"
-                                        } else {
-                                            "Ad Slot Ready (Pre-Roll/Mid-Roll) — Connect Meta Audience Network Placement IDs in Admin."
-                                        },
+                                        text = "${adSchedule.summaryText()} • 50/50 Creator Split",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
