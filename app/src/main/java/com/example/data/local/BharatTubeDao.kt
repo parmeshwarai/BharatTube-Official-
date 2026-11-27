@@ -9,6 +9,8 @@ import com.example.data.model.AdCampaignEntity
 import com.example.data.model.AuditLogEntity
 import com.example.data.model.ChannelEntity
 import com.example.data.model.ChatMessageEntity
+import com.example.data.model.ChhotuChatMessageEntity
+import com.example.data.model.ChhotuErrorReportEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.CommunityPostEntity
 import com.example.data.model.NotificationEntity
@@ -232,4 +234,52 @@ interface BharatTubeDao {
 
     @Update
     suspend fun updatePlatformSettings(settings: PlatformSettingsEntity)
+
+    // Chhotu AI Chat History (strictly isolated per userId)
+    @Query("SELECT * FROM chhotu_chat_messages WHERE userId = :userId ORDER BY createdAt ASC")
+    fun observeChhotuChatHistory(userId: String): Flow<List<ChhotuChatMessageEntity>>
+
+    @Query("SELECT * FROM chhotu_chat_messages WHERE userId = :userId ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun getRecentChhotuChatHistory(userId: String, limit: Int = 10): List<ChhotuChatMessageEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChhotuChatMessage(message: ChhotuChatMessageEntity)
+
+    @Query("DELETE FROM chhotu_chat_messages WHERE userId = :userId")
+    suspend fun clearChhotuChatHistory(userId: String)
+
+    // Chhotu AI Error & Health Reports
+    @Query("SELECT * FROM chhotu_health_reports ORDER BY createdAt DESC")
+    fun observeChhotuErrorReports(): Flow<List<ChhotuErrorReportEntity>>
+
+    @Query("SELECT * FROM chhotu_health_reports WHERE moduleName = :moduleName AND isResolved = 0 LIMIT 1")
+    suspend fun findOpenChhotuReportForModule(moduleName: String): ChhotuErrorReportEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertChhotuErrorReport(report: ChhotuErrorReportEntity)
+
+    @Query("UPDATE chhotu_health_reports SET isResolved = 1 WHERE id = :reportId")
+    suspend fun resolveChhotuErrorReport(reportId: String)
+
+    // Real DB Health & Count Probes
+    @Query("SELECT COUNT(*) FROM users")
+    suspend fun countUsersSync(): Int
+
+    @Query("SELECT COUNT(*) FROM channels")
+    suspend fun countChannelsSync(): Int
+
+    @Query("SELECT COUNT(*) FROM videos")
+    suspend fun countVideosSync(): Int
+
+    @Query("SELECT COUNT(*) FROM videos WHERE format = 'SHORT'")
+    suspend fun countShortsSync(): Int
+
+    @Query("SELECT COUNT(*) FROM comments")
+    suspend fun countCommentsSync(): Int
+
+    @Query("SELECT COUNT(*) FROM notifications")
+    suspend fun countNotificationsSync(): Int
+
+    @Query("SELECT COUNT(*) FROM upload_tasks")
+    suspend fun countUploadsSync(): Int
 }

@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -93,6 +94,8 @@ fun ProfileScreen(
     onOpenLibrary: () -> Unit,
     onOpenAdvertiser: () -> Unit,
     onOpenSuperAdmin: () -> Unit,
+    onOpenChhotuAi: () -> Unit,
+    onOpenChhotuAdmin: () -> Unit,
     onOpenChat: () -> Unit,
     onOpenSupport: () -> Unit,
     onUpdateProfile: (UserProfileEntity) -> Unit,
@@ -443,6 +446,15 @@ fun ProfileScreen(
                 onClick = onOpenAdvertiser
             )
         }
+        item {
+            ProfileNavTile(
+                icon = Icons.Filled.SmartToy,
+                title = "Chhotu AI — Official Assistant",
+                subtitle = "Hindi & English voice/text help for creators, uploads & monetization",
+                tag = "nav_chhotu_ai",
+                onClick = onOpenChhotuAi
+            )
+        }
         if (user?.isAdmin == true) {
             item {
                 ProfileNavTile(
@@ -451,6 +463,15 @@ fun ProfileScreen(
                     subtitle = "Global ON/OFF switches, 50:50 split rules, bans, audit logs",
                     tag = "nav_super_admin",
                     onClick = onOpenSuperAdmin
+                )
+            }
+            item {
+                ProfileNavTile(
+                    icon = Icons.Filled.Security,
+                    title = "Chhotu AI Control Center",
+                    subtitle = "17-point system check, error reports, server status & Admin AI",
+                    tag = "nav_chhotu_admin",
+                    onClick = onOpenChhotuAdmin
                 )
             }
         }

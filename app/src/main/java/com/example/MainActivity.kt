@@ -35,6 +35,8 @@ import com.example.ui.components.BharatTubeTopBar
 import com.example.ui.screens.AdvertiserScreen
 import com.example.ui.screens.ChannelScreen
 import com.example.ui.screens.ChatScreen
+import com.example.ui.screens.ChhotuAdminCenterScreen
+import com.example.ui.screens.ChhotuAiAssistantScreen
 import com.example.ui.screens.CreateChannelScreen
 import com.example.ui.screens.CreatorStudioScreen
 import com.example.ui.screens.ExploreScreen
@@ -121,6 +123,10 @@ fun BharatTubeApp(
     val supportTickets by viewModel.supportTickets.collectAsStateWithLifecycle()
     val communityPosts by viewModel.communityPosts.collectAsStateWithLifecycle()
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
+    val chhotuChatHistory by viewModel.chhotuChatHistory.collectAsStateWithLifecycle()
+    val chhotuErrorReports by viewModel.chhotuErrorReports.collectAsStateWithLifecycle()
+    val systemHealthSnapshot by viewModel.systemHealthSnapshot.collectAsStateWithLifecycle()
+    val chhotuBusy by viewModel.chhotuBusy.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
 
@@ -295,6 +301,8 @@ fun BharatTubeApp(
                         onOpenLibrary = { navController.navigate("library?tab=1") },
                         onOpenAdvertiser = { navController.navigate("advertiser") },
                         onOpenSuperAdmin = { navController.navigate("admin") },
+                        onOpenChhotuAi = { navController.navigate("chhotu_ai") },
+                        onOpenChhotuAdmin = { navController.navigate("chhotu_admin") },
                         onOpenChat = { navController.navigate("chat") },
                         onOpenSupport = { navController.navigate("support") },
                         onUpdateProfile = viewModel::updateUserProfile,
@@ -411,9 +419,46 @@ fun BharatTubeApp(
                         reports = reports,
                         auditLogs = auditLogs,
                         onBack = { navController.popBackStack() },
+                        onOpenChhotuAdmin = { navController.navigate("chhotu_admin") },
                         onUpdateSettings = viewModel::updatePlatformSettings,
                         onModerateUser = viewModel::moderateUser,
                         onResolveReport = viewModel::resolveReport
+                    )
+                }
+
+                composable("chhotu_ai") {
+                    ChhotuAiAssistantScreen(
+                        user = currentUser,
+                        settings = settings,
+                        messages = chhotuChatHistory,
+                        healthSnapshot = systemHealthSnapshot,
+                        isBusy = chhotuBusy,
+                        defaultLanguage = prefs.preferredLanguage,
+                        onBack = { navController.popBackStack() },
+                        onOpenAdminControlCenter = { navController.navigate("chhotu_admin") },
+                        onSendMessage = viewModel::sendChhotuMessage,
+                        onClearHistory = viewModel::clearChhotuHistory,
+                        onShowSnackbar = viewModel::showMessage
+                    )
+                }
+
+                composable("chhotu_admin") {
+                    ChhotuAdminCenterScreen(
+                        currentUser = currentUser,
+                        settings = settings,
+                        users = allUsers,
+                        channels = allChannels,
+                        videos = allVideos,
+                        payouts = payouts,
+                        reports = reports,
+                        auditLogs = auditLogs,
+                        chhotuErrorReports = chhotuErrorReports,
+                        healthSnapshot = systemHealthSnapshot,
+                        isChecking = chhotuBusy,
+                        onBack = { navController.popBackStack() },
+                        onRunSystemCheck = { viewModel.runChhotuHealthCheck(manualTrigger = true) },
+                        onResolveErrorReport = viewModel::resolveChhotuErrorReport,
+                        onExecuteConfirmedAction = viewModel::executeConfirmedAdminAction
                     )
                 }
 

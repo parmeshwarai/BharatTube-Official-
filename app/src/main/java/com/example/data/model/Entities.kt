@@ -282,10 +282,33 @@ data class PlatformSettingsEntity(
     val automaticPayoutEnabled: Boolean = true,
     val downloadsEnabled: Boolean = true,
     val communityPostsEnabled: Boolean = true,
+    val chhotuAiEnabled: Boolean = true,
     val creatorSharePct: Int = 50,
     val platformSharePct: Int = 50,
     val indiaPayoutThresholdInr: Double = 1000.0,
     val adFrequencyMinutes: Int = 8,
     val enabledCountriesCsv: String = "IN,US,GB,JP,AE,DE,BR,ID,TH,KR",
     val enabledLanguagesCsv: String = "hi,en,bho,bn,ta,te,mr,gu,pa,zh,ja,ko,ar,fr,de,es,pt,ru,id,th"
+)
+
+@Entity(tableName = "chhotu_chat_messages")
+data class ChhotuChatMessageEntity(
+    @PrimaryKey val id: String,
+    val userId: String,
+    val role: String, // "USER" or "CHHOTU_AI"
+    val text: String,
+    val languageCode: String = "hi",
+    val sourceMode: String = "LOCAL_GUIDE", // "EXISTING_BACKEND" | "LOCAL_GUIDE" | "SECURITY_BLOCK"
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "chhotu_health_reports")
+data class ChhotuErrorReportEntity(
+    @PrimaryKey val id: String,
+    val moduleName: String,
+    val severity: String, // "ERROR" | "DEGRADED" | "NOT_CONNECTED"
+    val cause: String,
+    val solution: String,
+    val isResolved: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
 )

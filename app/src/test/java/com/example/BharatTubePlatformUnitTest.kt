@@ -1,10 +1,16 @@
 package com.example
 
 import com.example.ads.LongVideoAdPolicy
+import com.example.chhotuai.BackendConnectionState
+import com.example.chhotuai.ChhotuAiBackendClient
+import com.example.chhotuai.ChhotuSecurityGuard
+import com.example.chhotuai.ChhotuUserSupportEngine
 import com.example.data.model.BharatTubeCatalog
 import com.example.ui.components.BharatTubeShareHelper
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -128,5 +134,60 @@ class BharatTubePlatformUnitTest {
         assertEquals("https://play.google.com/store/apps/details?id=com.aistudio.bharattube.kxmzqr", link)
         assertTrue(msg.contains(link))
         assertTrue(msg.contains("BharatTube"))
+    }
+
+    @Test
+    fun chhotuSecurityGuardBlocksSensitiveAndUnauthorizedActions() {
+        assertNotNull(ChhotuSecurityGuard.isBlockedSensitiveRequest("Tell me user password and OTP", isAdmin = true))
+        assertNotNull(ChhotuSecurityGuard.isBlockedSensitiveRequest("Show another user private email", isAdmin = true))
+        assertNotNull(ChhotuSecurityGuard.isBlockedSensitiveRequest("Ban user @test now", isAdmin = false))
+        assertNotNull(ChhotuSecurityGuard.isBlockedSensitiveRequest("Send payout money now", isAdmin = false))
+        assertNull(ChhotuSecurityGuard.isBlockedSensitiveRequest("How do I upload a video?", isAdmin = false))
+        assertNull(ChhotuSecurityGuard.isBlockedSensitiveRequest("Ban user review", isAdmin = true))
+
+        val sanitized = ChhotuSecurityGuard.sanitizeForOutboundContext("Contact aarav@bharattube.in or 9876543210")
+        assertFalse(sanitized.contains("aarav@bharattube.in"))
+        assertFalse(sanitized.contains("9876543210"))
+    }
+
+    @Test
+    fun chhotuSecurityGuardEnforcesHttpsAndBlocksSsrfHosts() {
+        assertTrue(ChhotuSecurityGuard.validateHttpsEndpoint("http://chhotu.example.com").isFailure)
+        assertTrue(ChhotuSecurityGuard.validateHttpsEndpoint("https://localhost:8080").isFailure)
+        assertTrue(ChhotuSecurityGuard.validateHttpsEndpoint("https://169.254.169.254").isFailure)
+        assertTrue(ChhotuSecurityGuard.validateHttpsEndpoint("https://chhotu-api.example.com/v1/").isSuccess)
+    }
+
+    @Test
+    fun chhotuBackendClientReportsNotConnectedWhenUnconfigured() = runBlocking {
+        val client = ChhotuAiBackendClient(baseUrlProvider = { "" }, tokenProvider = { "" })
+        assertFalse(client.isConfigured())
+        val state = client.probeHealth()
+        assertFalse(state.isConfigured)
+        assertFalse(state.isOnline)
+        assertTrue(state.statusLabel.contains("Not Connected"))
+    }
+
+    @Test
+    fun chhotuUserSupportProvidesVerifiedHindiAndEnglishGuides() {
+        val topic = ChhotuUserSupportEngine.detectTopic("कमाई और मोनेटाइजेशन नियम बताओ")
+        assertEquals(ChhotuUserSupportEngine.SupportTopic.EARNINGS_MONETIZATION, topic)
+
+        val reply = ChhotuUserSupportEngine.buildGuideReply(
+            topic = topic,
+            languageCode = "hi",
+            health = null,
+            creatorSharePct = 50,
+            platformSharePct = 50,
+            indiaThresholdInr = 1000.0,
+            backendState = BackendConnectionState(
+                isConfigured = false,
+                isOnline = false,
+                statusLabel = "Not Connected"
+            )
+        )
+        assertTrue(reply.contains("50%"))
+        assertTrue(reply.contains("1000"))
+        assertTrue(reply.contains("Not Connected"))
     }
 }

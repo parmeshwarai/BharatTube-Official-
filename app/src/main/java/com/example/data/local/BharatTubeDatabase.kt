@@ -10,6 +10,8 @@ import com.example.data.model.AdCampaignEntity
 import com.example.data.model.AuditLogEntity
 import com.example.data.model.ChannelEntity
 import com.example.data.model.ChatMessageEntity
+import com.example.data.model.ChhotuChatMessageEntity
+import com.example.data.model.ChhotuErrorReportEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.CommunityPostEntity
 import com.example.data.model.NotificationEntity
@@ -46,9 +48,11 @@ import com.example.data.model.WatchHistoryEntity
         SupportTicketEntity::class,
         CommunityPostEntity::class,
         SearchHistoryEntity::class,
-        PlatformSettingsEntity::class
+        PlatformSettingsEntity::class,
+        ChhotuChatMessageEntity::class,
+        ChhotuErrorReportEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class BharatTubeDatabase : RoomDatabase() {
@@ -66,6 +70,42 @@ abstract class BharatTubeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE platform_settings ADD COLUMN chhotuAiEnabled INTEGER NOT NULL DEFAULT 1"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `chhotu_chat_messages` (
+                        `id` TEXT NOT NULL,
+                        `userId` TEXT NOT NULL,
+                        `role` TEXT NOT NULL,
+                        `text` TEXT NOT NULL,
+                        `languageCode` TEXT NOT NULL,
+                        `sourceMode` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `chhotu_health_reports` (
+                        `id` TEXT NOT NULL,
+                        `moduleName` TEXT NOT NULL,
+                        `severity` TEXT NOT NULL,
+                        `cause` TEXT NOT NULL,
+                        `solution` TEXT NOT NULL,
+                        `isResolved` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): BharatTubeDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -73,7 +113,7 @@ abstract class BharatTubeDatabase : RoomDatabase() {
                     BharatTubeDatabase::class.java,
                     "bharattube_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

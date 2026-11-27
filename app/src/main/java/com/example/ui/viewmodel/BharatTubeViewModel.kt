@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.chhotuai.ChhotuPendingActionType
+import com.example.chhotuai.ChhotuPendingAdminAction
+import com.example.chhotuai.SystemHealthSnapshot
 import com.example.data.local.BharatTubeDatabase
 import com.example.data.local.UserPreferences
 import com.example.data.local.UserPreferencesRepository
@@ -13,6 +16,8 @@ import com.example.data.model.AdCampaignEntity
 import com.example.data.model.AuditLogEntity
 import com.example.data.model.ChannelEntity
 import com.example.data.model.ChatMessageEntity
+import com.example.data.model.ChhotuChatMessageEntity
+import com.example.data.model.ChhotuErrorReportEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.CommunityPostEntity
 import com.example.data.model.NotificationEntity
@@ -32,6 +37,7 @@ import com.example.data.model.VideoVisibility
 import com.example.data.model.WatchHistoryEntity
 import com.example.data.repository.BharatTubeRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +45,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -150,9 +157,29 @@ class BharatTubeViewModel(
     val searchHistory: StateFlow<List<SearchHistoryEntity>> = repository.searchHistory
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
+    val chhotuChatHistory: StateFlow<List<ChhotuChatMessageEntity>> = preferences
+        .flatMapLatest { prefs -> repository.observeChhotuChatHistory(prefs.activeUserId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val chhotuErrorReports: StateFlow<List<ChhotuErrorReportEntity>> = repository.chhotuErrorReports
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    private val _systemHealthSnapshot = MutableStateFlow<SystemHealthSnapshot?>(null)
+    val systemHealthSnapshot: StateFlow<SystemHealthSnapshot?> = _systemHealthSnapshot.asStateFlow()
+
+    private val _chhotuBusy = MutableStateFlow(false)
+    val chhotuBusy: StateFlow<Boolean> = _chhotuBusy.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.initialize()
+            // Initial + periodic automatic Chhotu AI health monitoring
+            while (isActive) {
+                runCatching {
+                    _systemHealthSnapshot.value = repository.runChhotuDiagnostics(notifyAdminsOnNewIssue = true)
+                }
+                delay(60_000L)
+            }
         }
     }
 
@@ -506,6 +533,97 @@ class BharatTubeViewModel(
             }
             repository.createCommunityPost(channel, text)
             _snackbarMessage.value = "Community post published"
+        }
+    }
+
+    fun runChhotuHealthCheck(manualTrigger: Boolean = true) {
+        viewModelScope.launch {
+            _chhotuBusy.value = true
+            try {
+                val snapshot = repository.runChhotuDiagnostics(notifyAdminsOnNewIssue = true)
+                _systemHealthSnapshot.value = snapshot
+                if (manualTrigger) {
+                    _snackbarMessage.value = "System check: ${snapshot.connectedCount}/${snapshot.totalCount} Connected"
+                }
+            } finally {
+                _chhotuBusy.value = false
+            }
+        }
+    }
+
+    fun sendChhotuMessage(text: String, languageCode: String) {
+        val user = currentUser.value ?: return
+        viewModelScope.launch {
+            _chhotuBusy.value = true
+            try {
+                repository.sendChhotuMessage(user, text, languageCode, _systemHealthSnapshot.value)
+                    .onFailure { _snackbarMessage.value = it.message }
+            } finally {
+                _chhotuBusy.value = false
+            }
+        }
+    }
+
+    fun clearChhotuHistory() {
+        val uid = currentUser.value?.uid ?: return
+        viewModelScope.launch {
+            repository.clearChhotuHistory(uid)
+            _snackbarMessage.value = "Chhotu AI chat cleared for current account"
+        }
+    }
+
+    fun resolveChhotuErrorReport(report: ChhotuErrorReportEntity) {
+        val admin = currentUser.value ?: return
+        if (!admin.isAdmin) {
+            _snackbarMessage.value = "Admin confirmation required"
+            return
+        }
+        viewModelScope.launch {
+            repository.resolveChhotuErrorReport(admin, report)
+            _snackbarMessage.value = "${report.moduleName} report resolved & logged"
+        }
+    }
+
+    fun executeConfirmedAdminAction(action: ChhotuPendingAdminAction) {
+        val admin = currentUser.value
+        if (admin?.isAdmin != true) {
+            _snackbarMessage.value = "Security Policy: Admin authorization required"
+            return
+        }
+        viewModelScope.launch {
+            when (action.type) {
+                ChhotuPendingActionType.TOGGLE_CHHOTU_AI -> {
+                    val current = platformSettings.value
+                    repository.updatePlatformSettings(
+                        admin = admin,
+                        updated = current.copy(chhotuAiEnabled = action.boolValue),
+                        actionLabel = "CHHOTU_AI_TOGGLE",
+                        details = "Admin confirmed Chhotu AI ${if (action.boolValue) "ONLINE" else "OFFLINE"}",
+                        previousValue = "${current.chhotuAiEnabled}",
+                        newValue = "${action.boolValue}"
+                    ).onSuccess {
+                        _snackbarMessage.value = "Chhotu AI is now ${if (action.boolValue) "Online" else "Offline"}"
+                    }
+                }
+                ChhotuPendingActionType.BAN_OR_RESTORE_USER -> {
+                    val target = allUsers.value.firstOrNull { it.uid == action.targetId } ?: return@launch
+                    repository.moderateUser(admin, target, action.boolValue, "Admin-confirmed via Chhotu AI Control Center")
+                    _snackbarMessage.value = if (action.boolValue) "Suspended ${target.handle}" else "Restored ${target.handle}"
+                }
+                ChhotuPendingActionType.TRIGGER_ADMIN_PAYOUT_REVIEW -> {
+                    val current = platformSettings.value
+                    repository.updatePlatformSettings(
+                        admin = admin,
+                        updated = current.copy(automaticPayoutEnabled = action.boolValue),
+                        actionLabel = "CHHOTU_PAYOUT_CONTROL",
+                        details = "Admin confirmed automatic payout switch change",
+                        previousValue = "${current.automaticPayoutEnabled}",
+                        newValue = "${action.boolValue}"
+                    ).onSuccess {
+                        _snackbarMessage.value = "Payout switch updated & logged"
+                    }
+                }
+            }
         }
     }
 

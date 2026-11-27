@@ -70,6 +70,7 @@ fun SuperAdminScreen(
     reports: List<ReportEntity>,
     auditLogs: List<AuditLogEntity>,
     onBack: () -> Unit,
+    onOpenChhotuAdmin: () -> Unit,
     onUpdateSettings: (PlatformSettingsEntity, String, String, String, String) -> Unit,
     onModerateUser: (UserProfileEntity, Boolean, String) -> Unit,
     onResolveReport: (ReportEntity, String) -> Unit
@@ -143,6 +144,14 @@ fun SuperAdminScreen(
                                     Text("Creator Share (${settings.creatorSharePct}%): ₹${String.format("%.2f", totalCreatorShare)}", color = EmeraldVerified)
                                     Text("BharatTube Share (${settings.platformSharePct}%): ₹${String.format("%.2f", totalPlatformShare)}", color = SaffronFlame)
                                     Text("Payout Requests: ${payouts.size} • Open Reports: ${reports.count { it.status == "OPEN" }}")
+                                    Spacer(Modifier.height(4.dp))
+                                    Button(
+                                        onClick = onOpenChhotuAdmin,
+                                        colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
+                                        modifier = Modifier.fillMaxWidth().testTag("superadmin_open_chhotu_center")
+                                    ) {
+                                        Text("Open Chhotu AI Control Center & 17-Point Check")
+                                    }
                                 }
                             }
                         }

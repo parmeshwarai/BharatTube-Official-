@@ -4,6 +4,12 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.example.chhotuai.ChhotuAiBackendClient
+import com.example.chhotuai.ChhotuDiagnosticsEngine
+import com.example.chhotuai.ChhotuSecurityGuard
+import com.example.chhotuai.ChhotuUserSupportEngine
+import com.example.chhotuai.CheckStatus
+import com.example.chhotuai.SystemHealthSnapshot
 import com.example.data.local.BharatTubeDao
 import com.example.data.local.SeedDataPopulator
 import com.example.data.local.UserPreferences
@@ -13,6 +19,8 @@ import com.example.data.model.AuditLogEntity
 import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.ChatMessageEntity
+import com.example.data.model.ChhotuChatMessageEntity
+import com.example.data.model.ChhotuErrorReportEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.CommunityPostEntity
 import com.example.data.model.NotificationEntity
@@ -48,6 +56,8 @@ class BharatTubeRepository(
 ) {
     private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeUploadJobs = mutableMapOf<String, Job>()
+    private val chhotuBackendClient = ChhotuAiBackendClient()
+    private val chhotuDiagnosticsEngine = ChhotuDiagnosticsEngine(context, dao, chhotuBackendClient)
 
     val preferences: Flow<UserPreferences> = prefsRepo.preferencesFlow
     val allUsers: Flow<List<UserProfileEntity>> = dao.observeAllUsers()
@@ -61,6 +71,7 @@ class BharatTubeRepository(
     val chatMessages: Flow<List<ChatMessageEntity>> = dao.observeAllChatMessages()
     val searchHistory: Flow<List<SearchHistoryEntity>> = dao.observeSearchHistory()
     val platformSettings: Flow<PlatformSettingsEntity?> = dao.observePlatformSettings()
+    val chhotuErrorReports: Flow<List<ChhotuErrorReportEntity>> = dao.observeChhotuErrorReports()
 
     fun observeUser(uid: String): Flow<UserProfileEntity?> = dao.observeUser(uid)
     fun observeMyChannels(uid: String): Flow<List<ChannelEntity>> = dao.observeMyChannels(uid)
@@ -73,6 +84,7 @@ class BharatTubeRepository(
     fun observeUploads(uid: String): Flow<List<UploadTaskEntity>> = dao.observeUploads(uid)
     fun observeNotifications(uid: String): Flow<List<NotificationEntity>> = dao.observeNotifications(uid)
     fun observeSupportTickets(uid: String): Flow<List<SupportTicketEntity>> = dao.observeSupportTickets(uid)
+    fun observeChhotuChatHistory(uid: String): Flow<List<ChhotuChatMessageEntity>> = dao.observeChhotuChatHistory(uid)
 
     suspend fun initialize() {
         SeedDataPopulator.ensureSeeded(dao)
@@ -728,6 +740,220 @@ class BharatTubeRepository(
                 channelId = channel.id,
                 channelName = channel.name,
                 text = text.trim()
+            )
+        )
+    }
+
+    // Chhotu AI Diagnostics, Monitoring & Official Assistant Integration
+    suspend fun runChhotuDiagnostics(notifyAdminsOnNewIssue: Boolean = true): SystemHealthSnapshot {
+        SeedDataPopulator.ensureSeeded(dao)
+        val snapshot = chhotuDiagnosticsEngine.runCompleteCheck()
+        val newlyDetected = mutableListOf<String>()
+
+        snapshot.items.forEach { item ->
+            val openReport = dao.findOpenChhotuReportForModule(item.moduleName)
+            if (item.status == CheckStatus.CONNECTED) {
+                if (openReport != null) {
+                    dao.resolveChhotuErrorReport(openReport.id)
+                }
+            } else {
+                val severity = item.status.name
+                val causeText = item.cause.ifBlank { item.detail }
+                val solutionText = item.solution.ifBlank { "Check configuration in Chhotu AI Control Center." }
+                if (openReport == null) {
+                    dao.upsertChhotuErrorReport(
+                        ChhotuErrorReportEntity(
+                            id = "chrep_${UUID.randomUUID().toString().take(8)}",
+                            moduleName = item.moduleName,
+                            severity = severity,
+                            cause = causeText,
+                            solution = solutionText,
+                            isResolved = false
+                        )
+                    )
+                    if (item.status == CheckStatus.ERROR || item.status == CheckStatus.DEGRADED) {
+                        newlyDetected += "${item.moduleName} (${item.status.label})"
+                    }
+                } else if (openReport.severity != severity || openReport.cause != causeText) {
+                    dao.upsertChhotuErrorReport(
+                        openReport.copy(
+                            severity = severity,
+                            cause = causeText,
+                            solution = solutionText,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+        }
+
+        if (notifyAdminsOnNewIssue && newlyDetected.isNotEmpty()) {
+            dao.insertNotification(
+                NotificationEntity(
+                    id = "notif_${UUID.randomUUID().toString().take(8)}",
+                    userId = "user_founder",
+                    category = "CHHOTU_ALERT",
+                    title = "Chhotu AI Alert: ${newlyDetected.size} issue(s) detected",
+                    body = "Modules needing attention: ${newlyDetected.joinToString(", ")}. Open Chhotu AI Control Center for causes & fixes."
+                )
+            )
+            dao.insertAuditLog(
+                AuditLogEntity(
+                    id = "audit_${UUID.randomUUID().toString().take(8)}",
+                    actorId = "chhotu_monitor",
+                    action = "CHHOTU_AUTO_ALERT",
+                    details = "Automatic check flagged: ${newlyDetected.joinToString(", ")}",
+                    previousValue = "Healthy",
+                    newValue = "${newlyDetected.size} open alert(s)"
+                )
+            )
+        }
+        return snapshot
+    }
+
+    suspend fun sendChhotuMessage(
+        user: UserProfileEntity,
+        rawText: String,
+        languageCode: String,
+        healthSnapshot: SystemHealthSnapshot?
+    ): Result<Unit> {
+        val text = rawText.trim()
+        if (text.isEmpty()) return Result.failure(IllegalArgumentException("Enter a message or use voice input."))
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.chhotuAiEnabled) {
+            return Result.failure(IllegalStateException("Chhotu AI is currently paused by Admin."))
+        }
+
+        // Strict Security Guardrail (passwords, OTPs, API keys, cross-user privacy, unauthorized bans/payouts)
+        val blockedReason = ChhotuSecurityGuard.isBlockedSensitiveRequest(text, user.isAdmin)
+        if (blockedReason != null) {
+            dao.insertChhotuChatMessage(
+                ChhotuChatMessageEntity(
+                    id = "cmsg_${UUID.randomUUID().toString().take(8)}",
+                    userId = user.uid,
+                    role = "USER",
+                    text = "[Filtered sensitive query]",
+                    languageCode = languageCode,
+                    sourceMode = "SECURITY_BLOCK"
+                )
+            )
+            dao.insertChhotuChatMessage(
+                ChhotuChatMessageEntity(
+                    id = "cmsg_${UUID.randomUUID().toString().take(8)}",
+                    userId = user.uid,
+                    role = "CHHOTU_AI",
+                    text = blockedReason,
+                    languageCode = languageCode,
+                    sourceMode = "SECURITY_BLOCK"
+                )
+            )
+            dao.insertAuditLog(
+                AuditLogEntity(
+                    id = "audit_${UUID.randomUUID().toString().take(8)}",
+                    actorId = user.uid,
+                    action = "CHHOTU_SECURITY_BLOCK",
+                    details = "Blocked sensitive or unauthorized request in Chhotu AI assistant.",
+                    previousValue = "Allowed",
+                    newValue = "Blocked"
+                )
+            )
+            return Result.success(Unit)
+        }
+
+        dao.insertChhotuChatMessage(
+            ChhotuChatMessageEntity(
+                id = "cmsg_${UUID.randomUUID().toString().take(8)}",
+                userId = user.uid,
+                role = "USER",
+                text = text,
+                languageCode = languageCode,
+                sourceMode = "USER_INPUT"
+            )
+        )
+
+        val recentHistory = dao.getRecentChhotuChatHistory(user.uid, 10).reversed()
+        val backendState = healthSnapshot?.backendState ?: chhotuBackendClient.probeHealth()
+        val topic = ChhotuUserSupportEngine.detectTopic(text)
+
+        val (replyText, sourceMode) = if (chhotuBackendClient.isConfigured()) {
+            val sanitizedSummary = buildString {
+                append("Role=${if (user.isAdmin) "Admin" else "Creator/Viewer"}; ")
+                append("Country=${user.countryCode}; Lang=$languageCode; ")
+                append("Split=${settings.creatorSharePct}/${settings.platformSharePct}; ")
+                if (healthSnapshot != null) {
+                    append("Health=${healthSnapshot.connectedCount}/${healthSnapshot.totalCount} connected")
+                }
+            }
+            val remoteResult = chhotuBackendClient.sendChatToExistingBackend(
+                userId = user.uid,
+                userMessage = text,
+                languageCode = languageCode,
+                sanitizedAppSummary = sanitizedSummary,
+                recentHistory = recentHistory
+            )
+            remoteResult.fold(
+                onSuccess = { remoteReply -> remoteReply to "EXISTING_BACKEND" },
+                onFailure = { err ->
+                    val prefix = if (languageCode == "hi") {
+                        "Chhotu AI सर्वर से उत्तर नहीं मिल सका (${err.message})."
+                    } else {
+                        "Could not reach existing Chhotu AI server (${err.message})."
+                    }
+                    val guideSuffix = if (topic != ChhotuUserSupportEngine.SupportTopic.NONE) {
+                        "\n\n" + ChhotuUserSupportEngine.buildGuideReply(
+                            topic = topic,
+                            languageCode = languageCode,
+                            health = healthSnapshot,
+                            creatorSharePct = settings.creatorSharePct,
+                            platformSharePct = settings.platformSharePct,
+                            indiaThresholdInr = settings.indiaPayoutThresholdInr,
+                            backendState = backendState
+                        )
+                    } else ""
+                    (prefix + guideSuffix) to "LOCAL_GUIDE"
+                }
+            )
+        } else {
+            val guideReply = ChhotuUserSupportEngine.buildGuideReply(
+                topic = topic,
+                languageCode = languageCode,
+                health = healthSnapshot,
+                creatorSharePct = settings.creatorSharePct,
+                platformSharePct = settings.platformSharePct,
+                indiaThresholdInr = settings.indiaPayoutThresholdInr,
+                backendState = backendState
+            )
+            guideReply to "LOCAL_GUIDE"
+        }
+
+        dao.insertChhotuChatMessage(
+            ChhotuChatMessageEntity(
+                id = "cmsg_${UUID.randomUUID().toString().take(8)}",
+                userId = user.uid,
+                role = "CHHOTU_AI",
+                text = replyText,
+                languageCode = languageCode,
+                sourceMode = sourceMode
+            )
+        )
+        return Result.success(Unit)
+    }
+
+    suspend fun clearChhotuHistory(userId: String) {
+        dao.clearChhotuChatHistory(userId)
+    }
+
+    suspend fun resolveChhotuErrorReport(admin: UserProfileEntity, report: ChhotuErrorReportEntity) {
+        if (!admin.isAdmin) return
+        dao.resolveChhotuErrorReport(report.id)
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = "CHHOTU_REPORT_RESOLVED",
+                details = "Marked ${report.moduleName} (${report.severity}) report resolved.",
+                previousValue = "OPEN",
+                newValue = "RESOLVED"
             )
         )
     }
