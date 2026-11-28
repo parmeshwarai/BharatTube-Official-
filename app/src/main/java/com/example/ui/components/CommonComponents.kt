@@ -77,39 +77,89 @@ import com.example.data.model.VideoEntity
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Subscriptions
+import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.unit.sp
+
 @Composable
 fun BharatTubeLogoMark(modifier: Modifier = Modifier) {
-    val primary = SaffronFlame
-    val secondary = LotusCoral
-    Canvas(modifier = modifier.size(30.dp)) {
+    val petalBrush = Brush.verticalGradient(listOf(Color(0xFFFF8F3F), SaffronFlame, LotusCoral))
+    Canvas(modifier = modifier.size(32.dp)) {
         val w = size.width
         val h = size.height
-        drawCircle(
-            brush = Brush.linearGradient(listOf(primary, secondary)),
-            radius = w * 0.48f,
-            center = Offset(w / 2f, h / 2f)
-        )
-        val triangle = Path().apply {
-            moveTo(w * 0.39f, h * 0.29f)
-            lineTo(w * 0.72f, h * 0.50f)
-            lineTo(w * 0.39f, h * 0.71f)
+        val cx = w / 2f
+        val baseY = h * 0.84f
+
+        // Center tall lotus petal
+        val centerPetal = Path().apply {
+            moveTo(cx, baseY)
+            cubicTo(w * 0.30f, h * 0.56f, w * 0.34f, h * 0.24f, cx, h * 0.12f)
+            cubicTo(w * 0.66f, h * 0.24f, w * 0.70f, h * 0.56f, cx, baseY)
             close()
         }
-        drawPath(triangle, color = Color.White)
+        // Inner left petal
+        val leftInner = Path().apply {
+            moveTo(cx, baseY)
+            cubicTo(w * 0.22f, h * 0.68f, w * 0.14f, h * 0.38f, w * 0.24f, h * 0.22f)
+            cubicTo(w * 0.38f, h * 0.30f, w * 0.44f, h * 0.54f, cx, baseY)
+            close()
+        }
+        // Inner right petal
+        val rightInner = Path().apply {
+            moveTo(cx, baseY)
+            cubicTo(w * 0.78f, h * 0.68f, w * 0.86f, h * 0.38f, w * 0.76f, h * 0.22f)
+            cubicTo(w * 0.62f, h * 0.30f, w * 0.56f, h * 0.54f, cx, baseY)
+            close()
+        }
+        // Outer left petal
+        val leftOuter = Path().apply {
+            moveTo(cx, baseY)
+            cubicTo(w * 0.14f, h * 0.82f, w * 0.05f, h * 0.58f, w * 0.08f, h * 0.40f)
+            cubicTo(w * 0.22f, h * 0.48f, w * 0.32f, h * 0.66f, cx, baseY)
+            close()
+        }
+        // Outer right petal
+        val rightOuter = Path().apply {
+            moveTo(cx, baseY)
+            cubicTo(w * 0.86f, h * 0.82f, w * 0.95f, h * 0.58f, w * 0.92f, h * 0.40f)
+            cubicTo(w * 0.78f, h * 0.48f, w * 0.68f, h * 0.66f, cx, baseY)
+            close()
+        }
+        // Lotus curved calyx base
+        val lotusBase = Path().apply {
+            moveTo(w * 0.18f, h * 0.86f)
+            quadraticTo(cx, h * 0.95f, w * 0.82f, h * 0.86f)
+            quadraticTo(cx, h * 0.80f, w * 0.18f, h * 0.86f)
+            close()
+        }
+
+        drawPath(leftOuter, brush = petalBrush, alpha = 0.88f)
+        drawPath(rightOuter, brush = petalBrush, alpha = 0.88f)
+        drawPath(leftInner, brush = petalBrush, alpha = 0.95f)
+        drawPath(rightInner, brush = petalBrush, alpha = 0.95f)
+        drawPath(centerPetal, brush = petalBrush)
+        drawPath(lotusBase, color = SaffronFlame)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BharatTubeTopBar(
-    isDarkTheme: Boolean,
     unreadNotificationCount: Int,
-    countryCode: String,
-    languageCode: String,
-    onSearchClick: () -> Unit,
+    onChhotuAiClick: () -> Unit,
     onNotificationsClick: () -> Unit,
-    onToggleTheme: () -> Unit,
-    onRegionClick: () -> Unit
+    onSearchClick: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -124,29 +174,36 @@ fun BharatTubeTopBar(
             }
         },
         actions = {
-            Surface(
-                onClick = onRegionClick,
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+            // Small circular Chhotu AI button next to Bell and Search
+            Box(
                 modifier = Modifier
-                    .padding(end = 4.dp)
-                    .testTag("region_chip_button")
+                    .minimumInteractiveComponentSize()
+                    .padding(end = 2.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "$countryCode • ${languageCode.uppercase()}",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                listOf(SaffronFlame.copy(alpha = 0.22f), LotusCoral.copy(alpha = 0.22f))
+                            )
+                        )
+                        .border(1.2.dp, SaffronFlame.copy(alpha = 0.75f), CircleShape)
+                        .clickable(onClick = onChhotuAiClick)
+                        .testTag("header_chhotu_ai_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.SmartToy,
+                        contentDescription = "Open Chhotu AI Assistant",
+                        tint = SaffronFlame,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
             }
-            IconButton(
-                onClick = onToggleTheme,
-                modifier = Modifier.testTag("theme_toggle_button")
-            ) {
-                Icon(
-                    imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                    contentDescription = "Toggle theme"
-                )
-            }
+
             IconButton(
                 onClick = onNotificationsClick,
                 modifier = Modifier.testTag("notifications_button")
@@ -378,42 +435,196 @@ fun IntegrationDisclosureBanner(
 
 enum class BharatTab(val route: String, val label: String) {
     HOME("home", "Home"),
-    EXPLORE("explore", "Explore"),
-    UPLOAD("upload", "Upload"),
     SHORTS("shorts", "Shorts"),
+    CREATE("create", "Upload"),
+    SUBSCRIPTIONS("subscriptions", "Subscriptions"),
     PROFILE("profile", "Profile")
 }
 
 @Composable
 fun BharatTubeBottomBar(
     currentRoute: String?,
-    onSelectTab: (BharatTab) -> Unit
+    onSelectTab: (BharatTab) -> Unit,
+    onCreateClick: () -> Unit
 ) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        windowInsets = WindowInsets.navigationBars
+    Surface(
+        color = Color(0xFF0E1018),
+        tonalElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        BharatTab.entries.forEach { tab ->
-            val selected = currentRoute == tab.route
-            val icon = when (tab) {
-                BharatTab.HOME -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
-                BharatTab.EXPLORE -> if (selected) Icons.Filled.Explore else Icons.Outlined.Explore
-                BharatTab.UPLOAD -> if (selected) Icons.Filled.AddCircle else Icons.Outlined.AddCircleOutline
-                BharatTab.SHORTS -> if (selected) Icons.Filled.PlayCircle else Icons.Outlined.PlayCircle
-                BharatTab.PROFILE -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
+        Column(modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                BharatTab.entries.forEach { tab ->
+                    if (tab == BharatTab.CREATE) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(64.dp)
+                                .clickable(onClick = onCreateClick)
+                                .testTag("bottom_tab_create_plus"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(Brush.linearGradient(listOf(SaffronFlame, LotusCoral))),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Create or Upload",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        val selected = currentRoute == tab.route
+                        val icon = when (tab) {
+                            BharatTab.HOME -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
+                            BharatTab.SHORTS -> if (selected) Icons.Filled.PlayCircle else Icons.Outlined.PlayCircle
+                            BharatTab.SUBSCRIPTIONS -> if (selected) Icons.Filled.Subscriptions else Icons.Outlined.Subscriptions
+                            BharatTab.PROFILE -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
+                            BharatTab.CREATE -> Icons.Filled.Add
+                        }
+                        val tint = if (selected) SaffronFlame else Color(0xFFA0A5B8)
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(64.dp)
+                                .clickable { onSelectTab(tab) }
+                                .testTag("bottom_tab_${tab.route}"),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = tab.label,
+                                tint = tint,
+                                modifier = Modifier.size(23.dp)
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = tab.label,
+                                color = tint,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onSelectTab(tab) },
-                icon = { Icon(icon, contentDescription = tab.label) },
-                label = { Text(tab.label, maxLines = 1) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = SaffronFlame,
-                    selectedTextColor = SaffronFlame,
-                    indicatorColor = SaffronFlame.copy(alpha = 0.16f)
-                ),
-                modifier = Modifier.testTag("bottom_tab_${tab.route}")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateOptionsBottomSheet(
+    onDismiss: () -> Unit,
+    onUploadVideo: () -> Unit,
+    onCreateShort: () -> Unit,
+    onGoLive: () -> Unit,
+    onCreatePost: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1D1F27),
+        contentColor = Color.White,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Create",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 8.dp)
+            )
+            CreateSheetOptionRow(
+                icon = Icons.Filled.FileUpload,
+                label = "Upload Video",
+                tag = "create_option_upload_video",
+                onClick = onUploadVideo
+            )
+            CreateSheetOptionRow(
+                icon = Icons.Filled.AutoAwesome,
+                label = "Create Short",
+                tag = "create_option_create_short",
+                onClick = onCreateShort
+            )
+            CreateSheetOptionRow(
+                icon = Icons.Filled.Sensors,
+                label = "Go Live",
+                tag = "create_option_go_live",
+                onClick = onGoLive
+            )
+            CreateSheetOptionRow(
+                icon = Icons.Filled.EditNote,
+                label = "Create Post",
+                tag = "create_option_create_post",
+                onClick = onCreatePost
             )
         }
+    }
+}
+
+@Composable
+private fun CreateSheetOptionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tag: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 10.dp)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF2B2E3B)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            color = Color.White
+        )
     }
 }

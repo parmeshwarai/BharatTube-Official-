@@ -88,19 +88,21 @@ class BharatTubeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val recommendedVideos: StateFlow<List<VideoEntity>> = combine(
-        allVideos,
-        allChannels,
-        watchHistory,
-        preferences,
-        selectedCategory
-    ) { videos, channels, history, prefs, category ->
+        combine(allVideos, allChannels, myChannels) { videos, channels, myCh ->
+            Triple(videos, channels, myCh)
+        },
+        combine(watchHistory, preferences, selectedCategory) { history, prefs, category ->
+            Triple(history, prefs, category)
+        }
+    ) { (videos, channels, myCh), (history, prefs, category) ->
         val ranked = repository.rankVideosForUser(
             videos = videos,
             channels = channels,
             history = history,
             preferredLanguage = prefs.preferredLanguage,
             preferredCountry = prefs.preferredCountry,
-            restrictedMode = prefs.restrictedMode
+            restrictedMode = prefs.restrictedMode,
+            myChannelIds = myCh.map { it.id }.toSet()
         )
         if (category == "All") ranked else ranked.filter { it.category == category }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -389,6 +391,83 @@ class BharatTubeViewModel(
     fun markNotificationsRead() {
         val uid = currentUser.value?.uid ?: return
         viewModelScope.launch { repository.markAllNotificationsRead(uid) }
+    }
+
+    fun publishVideoNow(
+        title: String,
+        description: String,
+        videoUri: String,
+        thumbnailUri: String,
+        format: VideoFormat,
+        visibility: VideoVisibility,
+        category: String,
+        hashtags: String,
+        allowComments: Boolean,
+        audienceType: String,
+        playlistId: String?,
+        onSuccess: (VideoEntity) -> Unit
+    ) {
+        val user = currentUser.value ?: return
+        val channel = myChannels.value.firstOrNull() ?: allChannels.value.firstOrNull()
+        if (channel == null) {
+            _snackbarMessage.value = "Create a channel in Profile before uploading."
+            return
+        }
+        viewModelScope.launch {
+            repository.publishVideoNow(
+                user = user,
+                channel = channel,
+                title = title,
+                description = description,
+                videoUri = videoUri,
+                thumbnailUri = thumbnailUri,
+                format = format,
+                visibility = visibility,
+                category = category,
+                hashtags = hashtags,
+                languageCode = preferences.value.preferredLanguage,
+                countryCode = preferences.value.preferredCountry,
+                allowComments = allowComments,
+                audienceType = audienceType,
+                playlistId = playlistId
+            ).onSuccess { video ->
+                _selectedCategory.value = "All"
+                _snackbarMessage.value = if (format == VideoFormat.SHORT) {
+                    "Short uploaded to BharatTube!"
+                } else {
+                    "Video uploaded to top of Home!"
+                }
+                onSuccess(video)
+            }.onFailure {
+                _snackbarMessage.value = it.message ?: "Upload failed"
+            }
+        }
+    }
+
+    fun startLiveBroadcast(
+        title: String,
+        onStarted: (VideoEntity) -> Unit
+    ) {
+        val user = currentUser.value ?: return
+        val channel = myChannels.value.firstOrNull() ?: allChannels.value.firstOrNull()
+        if (channel == null) {
+            _snackbarMessage.value = "Create a channel in Profile before going live."
+            return
+        }
+        viewModelScope.launch {
+            repository.startLiveBroadcast(
+                user = user,
+                channel = channel,
+                title = title,
+                languageCode = preferences.value.preferredLanguage,
+                countryCode = preferences.value.preferredCountry
+            ).onSuccess { liveVideo ->
+                _snackbarMessage.value = "You are Live on BharatTube!"
+                onStarted(liveVideo)
+            }.onFailure {
+                _snackbarMessage.value = it.message ?: "Could not start live stream"
+            }
+        }
     }
 
     fun startUpload(

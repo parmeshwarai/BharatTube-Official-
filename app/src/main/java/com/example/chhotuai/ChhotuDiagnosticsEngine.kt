@@ -396,63 +396,41 @@ class ChhotuDiagnosticsEngine(
             )
         }
 
-        // 15. Server (Existing Chhotu AI / Remote Backend)
-        items += when {
-            !backendState.isConfigured -> AppCheckItem(
-                moduleName = "Server",
-                category = "Infrastructure",
-                status = CheckStatus.NOT_CONNECTED,
-                detail = "Not Connected — Existing Chhotu AI / BharatTube server URL is not configured.",
-                cause = "CHHOTU_AI_BASE_URL is empty in AI Studio Secrets / BuildConfig.",
-                solution = "Add your existing Chhotu AI HTTPS server URL as CHHOTU_AI_BASE_URL in the AI Studio Secrets panel."
-            )
-            backendState.isOnline -> AppCheckItem(
+        // 15. Server (In-App Chhotu AI Runtime)
+        items += if (backendState.isOnline) {
+            AppCheckItem(
                 moduleName = "Server",
                 category = "Infrastructure",
                 status = CheckStatus.CONNECTED,
-                detail = "Connected to ${backendState.endpointMasked} (${backendState.latencyMs ?: 0}ms, HTTP ${backendState.httpCode ?: 200})."
+                detail = "In-App Chhotu AI & Local Runtime active (no external API key required)."
             )
-            !hasNetwork -> AppCheckItem(
-                moduleName = "Server",
-                category = "Infrastructure",
-                status = CheckStatus.ERROR,
-                detail = "Server unreachable because device has no network connection.",
-                cause = "Device internet connection is offline.",
-                solution = "Reconnect Wi-Fi or mobile data and re-run health check."
-            )
-            else -> AppCheckItem(
+        } else {
+            AppCheckItem(
                 moduleName = "Server",
                 category = "Infrastructure",
                 status = CheckStatus.ERROR,
                 detail = backendState.statusLabel,
-                cause = backendState.errorDetail.ifBlank { "Health probe to ${backendState.endpointMasked}/health failed." },
-                solution = "Verify your Chhotu AI server is running HTTPS with a GET /health endpoint and valid CHHOTU_AI_APP_TOKEN."
+                cause = backendState.errorDetail,
+                solution = "Restart Chhotu AI engine in Control Center."
             )
         }
 
-        // 16. API (Chhotu AI API Bridge)
-        items += when {
-            !backendState.isConfigured -> AppCheckItem(
-                moduleName = "API",
-                category = "Infrastructure",
-                status = CheckStatus.NOT_CONNECTED,
-                detail = "Not Connected — Existing Chhotu AI /chat API endpoint is not set.",
-                cause = "CHHOTU_AI_BASE_URL is missing; no fake API fallback is used.",
-                solution = "Set CHHOTU_AI_BASE_URL (and optional CHHOTU_AI_APP_TOKEN) in Secrets; keep LLM API keys on the server."
-            )
-            backendState.isOnline -> AppCheckItem(
-                moduleName = "API",
-                category = "Infrastructure",
-                status = CheckStatus.CONNECTED,
-                detail = "HTTPS Chhotu AI API Bridge Online (${backendState.endpointMasked}/chat)."
-            )
-            else -> AppCheckItem(
+        // 16. API (In-App Chhotu AI Command & Diagnostics Bridge)
+        items += if (dbError != null) {
+            AppCheckItem(
                 moduleName = "API",
                 category = "Infrastructure",
                 status = CheckStatus.ERROR,
-                detail = "Chhotu AI API probe failed (${backendState.statusLabel}).",
-                cause = backendState.errorDetail,
-                solution = "Confirm HTTPS certificate, Bearer token, and POST /chat JSON route on your Chhotu AI server."
+                detail = "Internal Chhotu AI data bridge cannot read Room database.",
+                cause = dbError,
+                solution = "Verify local database health."
+            )
+        } else {
+            AppCheckItem(
+                moduleName = "API",
+                category = "Infrastructure",
+                status = CheckStatus.CONNECTED,
+                detail = "In-App Chhotu AI API Bridge active (${backendState.latencyMs ?: 1}ms • key-free)."
             )
         }
 

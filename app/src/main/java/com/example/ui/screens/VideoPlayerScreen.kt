@@ -303,7 +303,7 @@ fun VideoPlayerScreen(
                                     Icon(Icons.Filled.Campaign, contentDescription = null, tint = SaffronFlame, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = "${adSchedule.summaryText()} • 50/50 Creator Split",
+                                        text = adSchedule.summaryText(),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -512,7 +512,7 @@ fun VideoPlayerScreen(
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Comments (${comments.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            if (settings.commentsEnabled) {
+                            if (settings.commentsEnabled && currentVideo.allowComments) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     OutlinedTextField(
                                         value = commentDraft,
@@ -533,7 +533,12 @@ fun VideoPlayerScreen(
                                     }
                                 }
                             } else {
-                                Text("Comments are turned off globally by Super Admin.", style = MaterialTheme.typography.bodySmall)
+                                val disabledReason = if (!currentVideo.allowComments) {
+                                    "Comments are turned off for this video."
+                                } else {
+                                    "Comments are turned off globally by Super Admin."
+                                }
+                                Text(disabledReason, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }

@@ -202,23 +202,17 @@ fun ChhotuAdminCenterScreen(
                                     } ?: "Running..."
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = (if (backend?.isOnline == true) EmeraldVerified else AmberGold).copy(alpha = 0.12f),
+                                        color = EmeraldVerified.copy(alpha = 0.12f),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(
-                                                "Backend Connection: ${backend?.statusLabel ?: "Checking..."}",
+                                                "AI Engine: ${backend?.statusLabel ?: "In-App Chhotu AI Engine Online"}",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (backend?.isOnline == true) EmeraldVerified else AmberGold
+                                                color = EmeraldVerified
                                             )
-                                            Text("Endpoint: ${backend?.endpointMasked ?: "Not Configured"}", style = MaterialTheme.typography.bodySmall)
-                                            if (backend?.latencyMs != null || backend?.httpCode != null) {
-                                                Text(
-                                                    "HTTP: ${backend.httpCode ?: "-"} • Latency: ${backend.latencyMs ?: "-"} ms",
-                                                    style = MaterialTheme.typography.labelSmall
-                                                )
-                                            }
+                                            Text("Mode: ${backend?.endpointMasked ?: "BharatTube On-Device Engine (No Key Required)"}", style = MaterialTheme.typography.bodySmall)
                                             Text("Last System Check: $lastCheckStr", style = MaterialTheme.typography.labelSmall)
                                         }
                                     }

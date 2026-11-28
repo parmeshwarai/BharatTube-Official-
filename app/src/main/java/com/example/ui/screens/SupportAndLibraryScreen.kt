@@ -194,7 +194,7 @@ fun SupportScreen(
     var message by remember { mutableStateOf("") }
 
     val faqs = listOf(
-        "How does BharatTube 50/50 revenue sharing work?" to "Eligible net advertising revenue after network fees and applicable taxes is split 50% to the Creator and 50% to BharatTube by default.",
+        "How does BharatTube creator monetization work?" to "Eligible channels earn advertising revenue tracked directly in Creator Studio, with payouts unlocked once verification and regional thresholds are met.",
         "When are India payouts initiated?" to "Once a creator in India reaches ₹1,000 in eligible available balance with KYC, UPI/Bank, and tax verification completed.",
         "How are copyright claims handled?" to "Submit a complaint or appeal here or via the video Report menu. Similarity alone is never treated as proof of infringement without review."
     )

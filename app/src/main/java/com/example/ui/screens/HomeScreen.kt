@@ -146,7 +146,7 @@ fun HomeScreen(
                         .fillMaxWidth(0.75f)
                 ) {
                     Text(
-                        text = "50% CREATOR SHARE • $countryCode FEED",
+                        text = "CREATOR SPOTLIGHT • $countryCode FEED",
                         style = MaterialTheme.typography.labelMedium,
                         color = SaffronFlame
                     )
@@ -302,39 +302,6 @@ fun HomeScreen(
             }
         }
 
-        // Native Ad Placement Slot (transparent integration status)
-        if (settings.advertisementsEnabled && settings.nativeAdsEnabled) {
-            item {
-                val adStateText = if (settings.metaAudienceNetworkEnabled) {
-                    if (settings.metaTestMode) {
-                        "Meta Audience Network adapter in Test Mode. Production placements require Meta app review & verified Placement IDs."
-                    } else {
-                        "Ad slot active — verify Meta Placement IDs in Advertiser Dashboard."
-                    }
-                } else {
-                    "Native Ad Placement ready (50/50 eligible net revenue share). Enable Meta Audience Network in Super Admin after SDK & Placement ID configuration."
-                }
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Campaign, contentDescription = "Sponsored placement", tint = SaffronFlame)
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Sponsored Placement • $countryCode ($languageCode)", style = MaterialTheme.typography.titleSmall)
-                            Text(adStateText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-        }
 
         // Personalized Recommended Videos
         item {

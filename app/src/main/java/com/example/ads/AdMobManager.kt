@@ -293,7 +293,7 @@ fun LongVideoAdOverlay(
                 }
                 Text(
                     text = when (activeAd) {
-                        is ActivePlayerAd.PreRoll -> "Supporting BharatTube Creators (50/50 Share)"
+                        is ActivePlayerAd.PreRoll -> "Supporting BharatTube Creators"
                         is ActivePlayerAd.MidRoll -> "20s Mid-Roll Break • Video resumes automatically"
                     },
                     color = Color.White.copy(alpha = 0.78f),

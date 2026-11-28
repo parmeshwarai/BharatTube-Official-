@@ -282,16 +282,13 @@ fun ShortsScreen(
 
     // Shorts Analytics Sheet
     analyticsShort?.let { short ->
-        val split = BharatTubeCatalog.calculateRevenueSplit(short.netRevenueInr / 0.8, creatorSharePct = settings.creatorSharePct, platformSharePct = settings.platformSharePct)
         ModalBottomSheet(onDismissRequest = { analyticsShort = null }) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Shorts Analytics & Revenue", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Shorts Analytics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(short.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Total Views: ${BharatTubeCatalog.formatCompactCount(short.viewCount)}")
                 Text("Total Likes: ${BharatTubeCatalog.formatCompactCount(short.likeCount)}")
                 Text("Licensed Audio: ${short.musicAttribution}")
-                Text("Creator Share (${settings.creatorSharePct}%): ₹${String.format("%.2f", split.creatorEarningsInr)}")
-                Text("BharatTube Share (${settings.platformSharePct}%): ₹${String.format("%.2f", split.platformEarningsInr)}")
                 TextButton(onClick = { analyticsShort = null }, modifier = Modifier.align(Alignment.End)) {
                     Text("Close")
                 }

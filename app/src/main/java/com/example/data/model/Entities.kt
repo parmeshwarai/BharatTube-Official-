@@ -81,6 +81,8 @@ data class VideoEntity(
     val netRevenueInr: Double = 0.0,
     val isLive: Boolean = false,
     val liveViewerCount: Int = 0,
+    val allowComments: Boolean = true,
+    val audienceType: String = "NOT_FOR_KIDS",
     val createdAt: Long = System.currentTimeMillis()
 )
 

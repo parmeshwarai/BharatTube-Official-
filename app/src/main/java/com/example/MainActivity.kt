@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.PictureInPictureParams
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -16,7 +17,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -32,12 +35,16 @@ import com.example.data.model.VideoEntity
 import com.example.ui.components.BharatTab
 import com.example.ui.components.BharatTubeBottomBar
 import com.example.ui.components.BharatTubeTopBar
+import com.example.ui.components.CreateOptionsBottomSheet
 import com.example.ui.screens.AdvertiserScreen
+import com.example.ui.screens.CameraCaptureMode
+import com.example.ui.screens.CameraCaptureScreen
 import com.example.ui.screens.ChannelScreen
 import com.example.ui.screens.ChatScreen
 import com.example.ui.screens.ChhotuAdminCenterScreen
 import com.example.ui.screens.ChhotuAiAssistantScreen
 import com.example.ui.screens.CreateChannelScreen
+import com.example.ui.screens.CreatePostScreen
 import com.example.ui.screens.CreatorStudioScreen
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.HomeScreen
@@ -47,8 +54,10 @@ import com.example.ui.screens.NotificationsScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.SearchScreen
 import com.example.ui.screens.ShortsScreen
+import com.example.ui.screens.SubscriptionsScreen
 import com.example.ui.screens.SuperAdminScreen
 import com.example.ui.screens.SupportScreen
+import com.example.ui.screens.UploadDetailsScreen
 import com.example.ui.screens.UploadScreen
 import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.theme.BharatTubeTheme
@@ -151,18 +160,18 @@ fun BharatTubeApp(
         }
     }
 
+    var showCreateSheet by remember { mutableStateOf(false) }
+
     val topLevelRoutes = setOf(
         BharatTab.HOME.route,
-        BharatTab.EXPLORE.route,
-        BharatTab.UPLOAD.route,
         BharatTab.SHORTS.route,
+        BharatTab.SUBSCRIPTIONS.route,
         BharatTab.PROFILE.route
     )
     val isTopLevel = currentRoute in topLevelRoutes || currentRoute?.startsWith("shorts") == true
     val showTopBar = currentRoute in setOf(
         BharatTab.HOME.route,
-        BharatTab.EXPLORE.route,
-        BharatTab.UPLOAD.route,
+        BharatTab.SUBSCRIPTIONS.route,
         BharatTab.PROFILE.route
     )
 
@@ -171,14 +180,10 @@ fun BharatTubeApp(
         topBar = {
             if (showTopBar) {
                 BharatTubeTopBar(
-                    isDarkTheme = prefs.isDarkTheme,
                     unreadNotificationCount = notifications.count { !it.isRead },
-                    countryCode = prefs.preferredCountry,
-                    languageCode = prefs.preferredLanguage,
-                    onSearchClick = { navController.navigate("search") },
+                    onChhotuAiClick = { navController.navigate("chhotu_ai") },
                     onNotificationsClick = { navController.navigate("notifications") },
-                    onToggleTheme = { viewModel.toggleDarkTheme() },
-                    onRegionClick = { navController.navigate(BharatTab.EXPLORE.route) }
+                    onSearchClick = { navController.navigate("search") }
                 )
             }
         },
@@ -193,7 +198,8 @@ fun BharatTubeApp(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    onCreateClick = { showCreateSheet = true }
                 )
             }
         }
@@ -224,11 +230,94 @@ fun BharatTubeApp(
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleWatchLater = viewModel::toggleWatchLater,
                         onOpenCreateChannel = { navController.navigate("create_channel") },
-                        onOpenSubscriptionsFeed = { navController.navigate("library?tab=0") }
+                        onOpenSubscriptionsFeed = { navController.navigate(BharatTab.SUBSCRIPTIONS.route) }
                     )
                 }
 
-                composable(BharatTab.EXPLORE.route) {
+                composable(BharatTab.SUBSCRIPTIONS.route) {
+                    SubscriptionsScreen(
+                        channels = allChannels,
+                        videos = allVideos,
+                        onOpenVideo = openVideoWithAd,
+                        onOpenChannel = { chId -> navController.navigate("channel/$chId") },
+                        onToggleSubscribe = viewModel::toggleSubscribe,
+                        onToggleWatchLater = viewModel::toggleWatchLater
+                    )
+                }
+
+                composable(
+                    route = "camera?mode={mode}",
+                    arguments = listOf(navArgument("mode") { type = NavType.StringType; defaultValue = "VIDEO" })
+                ) { entry ->
+                    val modeName = entry.arguments?.getString("mode") ?: "VIDEO"
+                    val initialMode = runCatching { CameraCaptureMode.valueOf(modeName) }
+                        .getOrDefault(CameraCaptureMode.VIDEO)
+                    CameraCaptureScreen(
+                        initialMode = initialMode,
+                        onBack = { navController.popBackStack() },
+                        onMediaReady = { uriString, isShort ->
+                            val encoded = Uri.encode(uriString)
+                            navController.navigate("upload_details?uri=$encoded&isShort=$isShort")
+                        },
+                        onStartLive = { streamTitle ->
+                            viewModel.startLiveBroadcast(streamTitle) { liveVideo ->
+                                navController.navigate("live/${liveVideo.id}") {
+                                    popUpTo(BharatTab.HOME.route) { inclusive = false }
+                                }
+                            }
+                        }
+                    )
+                }
+
+                composable(
+                    route = "upload_details?uri={uri}&isShort={isShort}",
+                    arguments = listOf(
+                        navArgument("uri") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("isShort") { type = NavType.BoolType; defaultValue = false }
+                    )
+                ) { entry ->
+                    val encodedUri = entry.arguments?.getString("uri") ?: ""
+                    val decodedUri = Uri.decode(encodedUri)
+                    val isShort = entry.arguments?.getBoolean("isShort") ?: false
+                    UploadDetailsScreen(
+                        videoUri = decodedUri,
+                        initialIsShort = isShort,
+                        playlists = playlists,
+                        onBack = { navController.popBackStack() },
+                        onCreatePlaylist = viewModel::createPlaylist,
+                        onPublish = { title, desc, vidUri, thumbUri, format, vis, cat, tags, allowComments, audience, plId ->
+                            viewModel.publishVideoNow(
+                                title = title,
+                                description = desc,
+                                videoUri = vidUri,
+                                thumbnailUri = thumbUri,
+                                format = format,
+                                visibility = vis,
+                                category = cat,
+                                hashtags = tags,
+                                allowComments = allowComments,
+                                audienceType = audience,
+                                playlistId = plId
+                            ) {
+                                navController.navigate(BharatTab.HOME.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    )
+                }
+
+                composable("create_post") {
+                    val activeChannel = myChannels.firstOrNull() ?: allChannels.firstOrNull()
+                    CreatePostScreen(
+                        activeChannel = activeChannel,
+                        onBack = { navController.popBackStack() },
+                        onPublishPost = viewModel::createCommunityPost
+                    )
+                }
+
+                composable("explore") {
                     ExploreScreen(
                         videos = allVideos,
                         channels = allChannels,
@@ -243,7 +332,7 @@ fun BharatTubeApp(
                     )
                 }
 
-                composable(BharatTab.UPLOAD.route) {
+                composable("upload") {
                     UploadScreen(
                         uploads = uploads,
                         defaultLanguage = prefs.preferredLanguage,
@@ -309,6 +398,7 @@ fun BharatTubeApp(
                         onCreateLocalAccount = viewModel::createLocalAccount,
                         onSwitchUser = viewModel::switchUser,
                         onToggleRestrictedMode = viewModel::toggleRestrictedMode,
+                        onToggleDarkTheme = viewModel::toggleDarkTheme,
                         onSelectLanguage = viewModel::setLanguage,
                         onSelectCountry = viewModel::setCountry
                     )
@@ -541,5 +631,27 @@ fun BharatTubeApp(
                 }
             }
         }
+    }
+
+    if (showCreateSheet) {
+        CreateOptionsBottomSheet(
+            onDismiss = { showCreateSheet = false },
+            onUploadVideo = {
+                showCreateSheet = false
+                navController.navigate("camera?mode=VIDEO")
+            },
+            onCreateShort = {
+                showCreateSheet = false
+                navController.navigate("camera?mode=SHORT")
+            },
+            onGoLive = {
+                showCreateSheet = false
+                navController.navigate("camera?mode=LIVE")
+            },
+            onCreatePost = {
+                showCreateSheet = false
+                navController.navigate("create_post")
+            }
+        )
     }
 }

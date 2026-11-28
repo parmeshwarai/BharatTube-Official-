@@ -227,18 +227,13 @@ fun ChhotuAiAssistantScreen(
                         Column {
                             Text("Chhotu AI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                text = when {
-                                    !settings.chhotuAiEnabled -> "Paused by Admin"
-                                    backendOnline -> "Existing AI Connected"
-                                    backendConfigured -> "Backend Error"
-                                    else -> "Backend Not Connected • App Guides Ready"
+                                text = if (!settings.chhotuAiEnabled) {
+                                    "Paused by Admin"
+                                } else {
+                                    "Online • Built-in In-App Assistant (No Key Needed)"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
-                                color = when {
-                                    !settings.chhotuAiEnabled -> LotusCoral
-                                    backendOnline -> EmeraldVerified
-                                    else -> AmberGold
-                                }
+                                color = if (!settings.chhotuAiEnabled) LotusCoral else EmeraldVerified
                             )
                         }
                     }
@@ -335,7 +330,7 @@ fun ChhotuAiAssistantScreen(
                     "How to create Channel?",
                     "How to upload Video?",
                     "How to make Shorts?",
-                    "Earnings & 50/50 Rules",
+                    "Creator Earnings",
                     "Using Creator Studio",
                     "System Health Status"
                 )
@@ -384,18 +379,16 @@ fun ChhotuAiAssistantScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (!backendOnline) {
-                                    Surface(
-                                        color = AmberGold.copy(alpha = 0.14f),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Text(
-                                            text = "Existing Chhotu AI Server: ${healthSnapshot?.backendState?.statusLabel ?: "Not Connected"}. Configure CHHOTU_AI_BASE_URL in AI Studio Secrets to forward chats to your existing Chhotu AI model.",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = AmberGold,
-                                            modifier = Modifier.padding(10.dp)
-                                        )
-                                    }
+                                Surface(
+                                    color = EmeraldVerified.copy(alpha = 0.14f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Chhotu AI Engine: Online directly inside BharatTube (Zero API keys or Secrets required).",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = EmeraldVerified,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
                                 }
                                 if (user?.isAdmin == true) {
                                     OutlinedButton(onClick = onOpenAdminControlCenter) {
@@ -442,9 +435,9 @@ fun ChhotuAiAssistantScreen(
                                     ) {
                                         Text(
                                             text = when (msg.sourceMode) {
-                                                "EXISTING_BACKEND" -> "Chhotu AI • Server"
+                                                "IN_APP_CHHOTU" -> "Chhotu AI • Built-in"
                                                 "SECURITY_BLOCK" -> "Chhotu AI • Security Policy"
-                                                else -> "Chhotu AI • App Guide"
+                                                else -> "Chhotu AI • Assistant"
                                             },
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,

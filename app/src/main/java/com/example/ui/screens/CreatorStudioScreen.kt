@@ -137,7 +137,7 @@ fun CreatorStudioScreen(
                 }
             }
 
-            // Transparent 50/50 Revenue Sharing Card
+            // Creator Earnings Card
             item {
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -145,31 +145,18 @@ fun CreatorStudioScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "Transparent Revenue Sharing (${settings.creatorSharePct}% Creator / ${settings.platformSharePct}% BharatTube)",
+                            "Creator Revenue & Balance",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            "Eligible Net Revenue: ${BharatTubeCatalog.formatCurrency(totalNetInr, countryCode)}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column {
-                                Text("Your Creator Share (${settings.creatorSharePct}%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    BharatTubeCatalog.formatCurrency(creatorTotalInr, countryCode),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = EmeraldVerified,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("BharatTube Share (${settings.platformSharePct}%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    BharatTubeCatalog.formatCurrency(platformTotalInr, countryCode),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
+                        Column {
+                            Text("Estimated Creator Earnings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                BharatTubeCatalog.formatCurrency(creatorTotalInr, countryCode),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = EmeraldVerified,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         Text(
                             "Long Videos Net: ${BharatTubeCatalog.formatCurrency(longNetInr, countryCode)} • Shorts Net: ${BharatTubeCatalog.formatCurrency(shortsNetInr, countryCode)}",

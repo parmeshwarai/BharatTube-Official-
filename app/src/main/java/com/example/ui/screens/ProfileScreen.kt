@@ -102,6 +102,7 @@ fun ProfileScreen(
     onCreateLocalAccount: (String, String, String, String, String, Boolean) -> Unit,
     onSwitchUser: (String) -> Unit,
     onToggleRestrictedMode: () -> Unit,
+    onToggleDarkTheme: () -> Unit,
     onSelectLanguage: (String) -> Unit,
     onSelectCountry: (String) -> Unit
 ) {
@@ -423,7 +424,7 @@ fun ProfileScreen(
             ProfileNavTile(
                 icon = Icons.Filled.AccountBalanceWallet,
                 title = "Creator Studio & Monetization",
-                subtitle = "Analytics, 50/50 revenue sharing & ₹1,000 India payout",
+                subtitle = "Analytics, channel earnings & ₹1,000 India payout",
                 tag = "nav_creator_studio",
                 onClick = onOpenCreatorStudio
             )
@@ -518,6 +519,13 @@ fun ProfileScreen(
                         Icon(Icons.Filled.Security, contentDescription = null, tint = SaffronFlame)
                         Spacer(Modifier.width(8.dp))
                         Text("Safety & Security", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Dark Theme", style = MaterialTheme.typography.bodyMedium)
+                            Text("Switch between Dark & Light appearance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = prefs.isDarkTheme, onCheckedChange = { onToggleDarkTheme() })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.weight(1f)) {

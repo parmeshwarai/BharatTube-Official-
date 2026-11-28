@@ -52,7 +52,7 @@ import com.example.data.model.WatchHistoryEntity
         ChhotuChatMessageEntity::class,
         ChhotuErrorReportEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class BharatTubeDatabase : RoomDatabase() {
@@ -106,6 +106,13 @@ abstract class BharatTubeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE videos ADD COLUMN allowComments INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE videos ADD COLUMN audienceType TEXT NOT NULL DEFAULT 'NOT_FOR_KIDS'")
+            }
+        }
+
         fun getInstance(context: Context): BharatTubeDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -113,7 +120,7 @@ abstract class BharatTubeDatabase : RoomDatabase() {
                     BharatTubeDatabase::class.java,
                     "bharattube_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }
@@ -311,7 +318,7 @@ object SeedDataPopulator {
                 channelName = "Aarav Tech Lab",
                 channelHandle = "@aaravtech",
                 title = "LIVE: Creator Economy Q&A — Monetization & Global Reach",
-                description = "Live townhall discussing 50/50 creator revenue sharing, regional subtitles, and channel growth.",
+                description = "Live townhall discussing creator growth, regional subtitles, and global reach on BharatTube.",
                 thumbnailKey = "drawable:img_hero_creators",
                 videoUri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
                 category = "Education",

@@ -90,14 +90,15 @@ class BharatTubeRepository(
         SeedDataPopulator.ensureSeeded(dao)
     }
 
-    // Intelligent recommendation ranking based on user language, country, subscriptions & history
+    // Intelligent recommendation ranking: newly uploaded user videos appear at the top of Home Page
     fun rankVideosForUser(
         videos: List<VideoEntity>,
         channels: List<ChannelEntity>,
         history: List<WatchHistoryEntity>,
         preferredLanguage: String,
         preferredCountry: String,
-        restrictedMode: Boolean
+        restrictedMode: Boolean,
+        myChannelIds: Set<String> = emptySet()
     ): List<VideoEntity> {
         val subscribedIds = channels.filter { it.isSubscribedByMe }.map { it.id }.toSet()
         val watchedVideoMap = videos.associateBy { it.id }
@@ -109,15 +110,21 @@ class BharatTubeRepository(
             .filter { it.visibility == VideoVisibility.PUBLIC.name }
             .filter { !restrictedMode || !it.title.contains("18+", ignoreCase = true) }
             .sortedByDescending { video ->
-                var score = 0.0
-                if (video.languageCode == preferredLanguage) score += 35.0
-                if (video.countryCode == preferredCountry) score += 20.0
-                if (video.channelId in subscribedIds) score += 45.0
-                score += (preferredCategories[video.category] ?: 0) * 15.0
-                score += kotlin.math.ln((video.viewCount + 1).toDouble()) * 4.0
-                score += kotlin.math.ln((video.likeCount + 1).toDouble()) * 3.0
-                if (video.isLive) score += 25.0
-                score
+                val isUserUploaded = video.id.startsWith("vid_upl_") || video.channelId in myChannelIds
+                if (isUserUploaded) {
+                    // Always place newly uploaded videos right at the top sorted by newest upload time
+                    1_000_000_000_000.0 + video.createdAt.toDouble()
+                } else {
+                    var score = 0.0
+                    if (video.languageCode == preferredLanguage) score += 35.0
+                    if (video.countryCode == preferredCountry) score += 20.0
+                    if (video.channelId in subscribedIds) score += 45.0
+                    score += (preferredCategories[video.category] ?: 0) * 15.0
+                    score += kotlin.math.ln((video.viewCount + 1).toDouble()) * 4.0
+                    score += kotlin.math.ln((video.likeCount + 1).toDouble()) * 3.0
+                    if (video.isLive) score += 25.0
+                    score
+                }
             }
     }
 
@@ -436,7 +443,7 @@ class BharatTubeRepository(
                     )
                     dao.upsertUploadTask(completed)
                     val video = VideoEntity(
-                        id = "vid_${UUID.randomUUID().toString().take(8)}",
+                        id = "vid_upl_${UUID.randomUUID().toString().take(8)}",
                         channelId = channel.id,
                         channelName = channel.name,
                         channelHandle = channel.handle,
@@ -464,7 +471,7 @@ class BharatTubeRepository(
                             userId = completed.ownerUserId,
                             category = "UPLOAD",
                             title = "Upload Ready: ${completed.title}",
-                            body = "Saved to local BharatTube library (${completed.visibility}). Cloud CDN distribution awaits backend setup."
+                            body = "Published to BharatTube (${completed.visibility})."
                         )
                     )
                     break
@@ -478,6 +485,168 @@ class BharatTubeRepository(
                 }
             }
         }
+    }
+
+    private fun extractVideoFrameThumbnail(uriString: String): String {
+        if (uriString.isBlank() || uriString.startsWith("http")) return ""
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, Uri.parse(uriString))
+            val bmp = retriever.getFrameAtTime(500_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.frameAtTime
+                ?: return ""
+            val outDir = java.io.File(context.filesDir, "thumbnails").apply { mkdirs() }
+            val outFile = java.io.File(outDir, "thumb_${UUID.randomUUID().toString().take(8)}.jpg")
+            java.io.FileOutputStream(outFile).use { fos ->
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, fos)
+            }
+            bmp.recycle()
+            Uri.fromFile(outFile).toString()
+        } catch (_: Exception) {
+            ""
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    suspend fun publishVideoNow(
+        user: UserProfileEntity,
+        channel: ChannelEntity,
+        title: String,
+        description: String,
+        videoUri: String,
+        thumbnailUri: String,
+        format: VideoFormat,
+        visibility: VideoVisibility,
+        category: String,
+        hashtags: String,
+        languageCode: String,
+        countryCode: String,
+        allowComments: Boolean,
+        audienceType: String,
+        playlistId: String?
+    ): Result<VideoEntity> {
+        if (user.isBanned || user.uploadRestricted) {
+            return Result.failure(IllegalStateException("Your account is currently restricted from uploading."))
+        }
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.videoUploadsEnabled) {
+            return Result.failure(IllegalStateException("Uploads are temporarily disabled by Super Admin."))
+        }
+        if (title.isBlank()) {
+            return Result.failure(IllegalArgumentException("Please add a video title before uploading."))
+        }
+        val effectiveUri = videoUri.ifBlank {
+            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+        }
+        val effectiveThumb = thumbnailUri.ifBlank {
+            extractVideoFrameThumbnail(effectiveUri).ifBlank {
+                when (category) {
+                    "Music" -> "drawable:img_thumb_music"
+                    "Travel" -> "drawable:img_thumb_travel"
+                    else -> "drawable:img_thumb_tech"
+                }
+            }
+        }
+        val totalBytes = resolveFileSizeBytes(effectiveUri)
+        val durationSec = resolveVideoDurationSeconds(effectiveUri, format)
+        val now = System.currentTimeMillis()
+        val task = UploadTaskEntity(
+            id = "upl_${UUID.randomUUID().toString().take(8)}",
+            ownerUserId = user.uid,
+            channelId = channel.id,
+            title = title.trim(),
+            description = description.trim(),
+            fileUri = effectiveUri,
+            thumbnailUri = effectiveThumb,
+            format = format.name,
+            visibility = visibility.name,
+            category = category,
+            hashtags = hashtags.ifBlank { "#BharatTube" },
+            languageCode = languageCode,
+            countryCode = countryCode,
+            totalBytes = totalBytes,
+            uploadedBytes = totalBytes,
+            speedBytesPerSec = totalBytes.coerceAtLeast(1L),
+            status = UploadStatus.COMPLETED.name,
+            createdAt = now
+        )
+        dao.upsertUploadTask(task)
+
+        val video = VideoEntity(
+            id = "vid_upl_${UUID.randomUUID().toString().take(8)}",
+            channelId = channel.id,
+            channelName = channel.name,
+            channelHandle = channel.handle,
+            title = title.trim(),
+            description = description.trim(),
+            thumbnailKey = effectiveThumb,
+            videoUri = effectiveUri,
+            category = category,
+            hashtags = hashtags.ifBlank { "#BharatTube" },
+            languageCode = languageCode,
+            countryCode = countryCode,
+            format = format.name,
+            visibility = visibility.name,
+            durationSeconds = durationSec,
+            allowComments = allowComments,
+            audienceType = audienceType,
+            captionsText = "",
+            copyrightStatus = "SELF_DECLARED_CLEARED",
+            createdAt = now
+        )
+        dao.upsertVideo(video)
+
+        if (!playlistId.isNullOrBlank()) {
+            dao.addVideoToPlaylist(PlaylistVideoCrossRef(playlistId, video.id))
+        }
+
+        dao.insertNotification(
+            NotificationEntity(
+                id = "notif_${UUID.randomUUID().toString().take(8)}",
+                userId = user.uid,
+                category = "UPLOAD",
+                title = "Uploaded: ${video.title}",
+                body = "Your ${if (format == VideoFormat.SHORT) "Short" else "Video"} is now live (${visibility.name})."
+            )
+        )
+        return Result.success(video)
+    }
+
+    suspend fun startLiveBroadcast(
+        user: UserProfileEntity,
+        channel: ChannelEntity,
+        title: String,
+        languageCode: String,
+        countryCode: String
+    ): Result<VideoEntity> {
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.liveStreamingEnabled) {
+            return Result.failure(IllegalStateException("Live streaming is currently paused by Super Admin."))
+        }
+        val cleanTitle = title.trim().ifBlank { "${channel.name} Live Stream" }
+        val liveVideo = VideoEntity(
+            id = "vid_upl_${UUID.randomUUID().toString().take(8)}",
+            channelId = channel.id,
+            channelName = channel.name,
+            channelHandle = channel.handle,
+            title = "LIVE: $cleanTitle",
+            description = "Live broadcast from ${channel.name} (${channel.handle})",
+            thumbnailKey = channel.bannerUri.ifBlank { "drawable:img_hero_creators" },
+            videoUri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+            category = channel.category,
+            hashtags = "#Live #BharatTube",
+            languageCode = languageCode,
+            countryCode = countryCode,
+            format = VideoFormat.LIVE.name,
+            visibility = VideoVisibility.PUBLIC.name,
+            durationSeconds = 0,
+            isLive = true,
+            liveViewerCount = 1,
+            createdAt = System.currentTimeMillis()
+        )
+        dao.upsertVideo(liveVideo)
+        return Result.success(liveVideo)
     }
 
     suspend fun pauseUpload(taskId: String) {
@@ -872,59 +1041,23 @@ class BharatTubeRepository(
         )
 
         val recentHistory = dao.getRecentChhotuChatHistory(user.uid, 10).reversed()
-        val backendState = healthSnapshot?.backendState ?: chhotuBackendClient.probeHealth()
-        val topic = ChhotuUserSupportEngine.detectTopic(text)
+        val totalUsers = dao.countUsersSync()
+        val totalVideos = dao.countVideosSync()
+        val totalChannels = dao.countChannelsSync()
 
-        val (replyText, sourceMode) = if (chhotuBackendClient.isConfigured()) {
-            val sanitizedSummary = buildString {
-                append("Role=${if (user.isAdmin) "Admin" else "Creator/Viewer"}; ")
-                append("Country=${user.countryCode}; Lang=$languageCode; ")
-                append("Split=${settings.creatorSharePct}/${settings.platformSharePct}; ")
-                if (healthSnapshot != null) {
-                    append("Health=${healthSnapshot.connectedCount}/${healthSnapshot.totalCount} connected")
-                }
-            }
-            val remoteResult = chhotuBackendClient.sendChatToExistingBackend(
-                userId = user.uid,
-                userMessage = text,
-                languageCode = languageCode,
-                sanitizedAppSummary = sanitizedSummary,
-                recentHistory = recentHistory
-            )
-            remoteResult.fold(
-                onSuccess = { remoteReply -> remoteReply to "EXISTING_BACKEND" },
-                onFailure = { err ->
-                    val prefix = if (languageCode == "hi") {
-                        "Chhotu AI सर्वर से उत्तर नहीं मिल सका (${err.message})."
-                    } else {
-                        "Could not reach existing Chhotu AI server (${err.message})."
-                    }
-                    val guideSuffix = if (topic != ChhotuUserSupportEngine.SupportTopic.NONE) {
-                        "\n\n" + ChhotuUserSupportEngine.buildGuideReply(
-                            topic = topic,
-                            languageCode = languageCode,
-                            health = healthSnapshot,
-                            creatorSharePct = settings.creatorSharePct,
-                            platformSharePct = settings.platformSharePct,
-                            indiaThresholdInr = settings.indiaPayoutThresholdInr,
-                            backendState = backendState
-                        )
-                    } else ""
-                    (prefix + guideSuffix) to "LOCAL_GUIDE"
-                }
-            )
-        } else {
-            val guideReply = ChhotuUserSupportEngine.buildGuideReply(
-                topic = topic,
-                languageCode = languageCode,
-                health = healthSnapshot,
-                creatorSharePct = settings.creatorSharePct,
-                platformSharePct = settings.platformSharePct,
-                indiaThresholdInr = settings.indiaPayoutThresholdInr,
-                backendState = backendState
-            )
-            guideReply to "LOCAL_GUIDE"
-        }
+        val replyText = chhotuBackendClient.generateInAppReply(
+            userMessage = text,
+            isAdmin = user.isAdmin,
+            languageCode = languageCode,
+            healthSnapshot = healthSnapshot,
+            totalUsers = totalUsers,
+            totalVideos = totalVideos,
+            totalChannels = totalChannels,
+            creatorSharePct = settings.creatorSharePct,
+            platformSharePct = settings.platformSharePct,
+            indiaThresholdInr = settings.indiaPayoutThresholdInr,
+            recentHistory = recentHistory
+        )
 
         dao.insertChhotuChatMessage(
             ChhotuChatMessageEntity(
@@ -933,7 +1066,7 @@ class BharatTubeRepository(
                 role = "CHHOTU_AI",
                 text = replyText,
                 languageCode = languageCode,
-                sourceMode = sourceMode
+                sourceMode = "IN_APP_CHHOTU"
             )
         )
         return Result.success(Unit)

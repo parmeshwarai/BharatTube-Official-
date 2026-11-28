@@ -159,35 +159,65 @@ class BharatTubePlatformUnitTest {
     }
 
     @Test
-    fun chhotuBackendClientReportsNotConnectedWhenUnconfigured() = runBlocking {
-        val client = ChhotuAiBackendClient(baseUrlProvider = { "" }, tokenProvider = { "" })
-        assertFalse(client.isConfigured())
+    fun chhotuBackendClientRunsInAppWithoutSecretsOrKeys() {
+        val client = ChhotuAiBackendClient()
+        assertTrue(client.isConfigured())
         val state = client.probeHealth()
-        assertFalse(state.isConfigured)
-        assertFalse(state.isOnline)
-        assertTrue(state.statusLabel.contains("Not Connected"))
-    }
-
-    @Test
-    fun chhotuUserSupportProvidesVerifiedHindiAndEnglishGuides() {
-        val topic = ChhotuUserSupportEngine.detectTopic("कमाई और मोनेटाइजेशन नियम बताओ")
-        assertEquals(ChhotuUserSupportEngine.SupportTopic.EARNINGS_MONETIZATION, topic)
-
-        val reply = ChhotuUserSupportEngine.buildGuideReply(
-            topic = topic,
-            languageCode = "hi",
-            health = null,
+        assertTrue(state.isConfigured)
+        assertTrue(state.isOnline)
+        assertTrue(state.statusLabel.contains("Online"))
+        val reply = client.generateInAppReply(
+            userMessage = "How do I upload a video?",
+            isAdmin = false,
+            languageCode = "en",
+            healthSnapshot = null,
+            totalUsers = 3,
+            totalVideos = 6,
+            totalChannels = 2,
             creatorSharePct = 50,
             platformSharePct = 50,
             indiaThresholdInr = 1000.0,
-            backendState = BackendConnectionState(
-                isConfigured = false,
-                isOnline = false,
-                statusLabel = "Not Connected"
-            )
+            recentHistory = emptyList()
         )
-        assertTrue(reply.contains("50%"))
-        assertTrue(reply.contains("1000"))
-        assertTrue(reply.contains("Not Connected"))
+        assertTrue(reply.contains("Upload"))
+    }
+
+    @Test
+    fun chhotuUserSupportHidesAdminSplitFromRegularUsersAndExposesToAdmins() {
+        val topic = ChhotuUserSupportEngine.detectTopic("कमाई और मोनेटाइजेशन नियम बताओ")
+        assertEquals(ChhotuUserSupportEngine.SupportTopic.EARNINGS_MONETIZATION, topic)
+
+        val userReply = ChhotuUserSupportEngine.buildDirectReply(
+            rawQuery = "कमाई और मोनेटाइजेशन नियम बताओ",
+            topic = topic,
+            isAdmin = false,
+            languageCode = "hi",
+            health = null,
+            totalUsers = 3,
+            totalVideos = 6,
+            totalChannels = 2,
+            creatorSharePct = 50,
+            platformSharePct = 50,
+            indiaThresholdInr = 1000.0,
+            historyCount = 0
+        )
+        assertTrue(userReply.contains("1000"))
+        assertFalse(userReply.contains("50%"))
+
+        val adminReply = ChhotuUserSupportEngine.buildDirectReply(
+            rawQuery = "कमाई और मोनेटाइजेशन नियम बताओ",
+            topic = topic,
+            isAdmin = true,
+            languageCode = "hi",
+            health = null,
+            totalUsers = 3,
+            totalVideos = 6,
+            totalChannels = 2,
+            creatorSharePct = 50,
+            platformSharePct = 50,
+            indiaThresholdInr = 1000.0,
+            historyCount = 0
+        )
+        assertTrue(adminReply.contains("50%"))
     }
 }
