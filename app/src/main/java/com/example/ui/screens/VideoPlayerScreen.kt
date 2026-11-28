@@ -109,7 +109,8 @@ fun VideoPlayerScreen(
     onOpenVideo: (VideoEntity) -> Unit,
     onOpenChannel: (String) -> Unit,
     onSubmitReport: (String, String, String, String, String) -> Unit,
-    onEnterPip: () -> Unit
+    onEnterPip: () -> Unit,
+    onShareVideo: (String) -> Unit = {}
 ) {
     val video by observeVideo(videoId).collectAsStateWithLifecycle(initialValue = null)
     val comments by observeComments(videoId).collectAsStateWithLifecycle(initialValue = emptyList())
@@ -402,6 +403,7 @@ fun VideoPlayerScreen(
                             item {
                                 Surface(
                                     onClick = {
+                                        onShareVideo(currentVideo.id)
                                         val share = Intent(Intent.ACTION_SEND).apply {
                                             putExtra(Intent.EXTRA_TEXT, "Watch '${currentVideo.title}' on BharatTube!")
                                             type = "text/plain"

@@ -51,6 +51,7 @@ import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.SearchHistoryEntity
 import com.example.data.model.VideoEntity
+import com.example.data.model.VideoVisibility
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.SaffronFlame
 
@@ -103,7 +104,10 @@ fun SearchScreen(
                 v.hashtags.contains(query, ignoreCase = true) ||
                 v.category.contains(query, ignoreCase = true)
             val lMatch = filterLang == "ALL" || v.languageCode == filterLang
-            qMatch && lMatch
+            v.visibility == VideoVisibility.PUBLIC.name &&
+                v.chhotuCheckStatus == "APPROVED" &&
+                qMatch &&
+                lMatch
         }.let { list ->
             if (sortByPopular) {
                 list.sortedByDescending { v ->

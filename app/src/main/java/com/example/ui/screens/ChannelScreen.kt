@@ -125,8 +125,16 @@ fun ChannelScreen(
             Text("Channel not found")
         }
         val isOwner = ch.ownerUserId == currentUserId
-        val channelVideos = allVideos.filter { it.channelId == ch.id && it.format != VideoFormat.SHORT.name }
-        val channelShorts = allVideos.filter { it.channelId == ch.id && it.format == VideoFormat.SHORT.name }
+        val channelVideos = allVideos.filter {
+            it.channelId == ch.id &&
+                it.format != VideoFormat.SHORT.name &&
+                (isOwner || it.chhotuCheckStatus == "APPROVED")
+        }
+        val channelShorts = allVideos.filter {
+            it.channelId == ch.id &&
+                it.format == VideoFormat.SHORT.name &&
+                (isOwner || it.chhotuCheckStatus == "APPROVED")
+        }
         val channelPosts = communityPosts.filter { it.channelId == ch.id }
 
         LazyColumn(

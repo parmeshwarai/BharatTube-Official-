@@ -22,10 +22,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -73,6 +75,7 @@ import com.example.ui.components.BharatTubeLogoMark
 import com.example.ui.components.BharatTubeThumbnail
 import com.example.ui.components.ChannelLogoAvatar
 import com.example.ui.components.ProfileFormatters
+import com.example.ui.theme.AmberGold
 import com.example.ui.theme.EmeraldVerified
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -87,6 +90,8 @@ fun YourVideosScreen(
     onUploadClick: () -> Unit,
     onOpenProfileMenu: () -> Unit,
     onOpenVideo: (VideoEntity) -> Unit,
+    onOpenChhotuCheck: (VideoEntity) -> Unit = {},
+    onOpenAnalytics: (VideoEntity) -> Unit = {},
     onUpdateVideo: (
         videoId: String,
         title: String,
@@ -276,7 +281,15 @@ fun YourVideosScreen(
                     items(filteredVideos, key = { it.id }) { video ->
                         YourVideoManageCard(
                             video = video,
-                            onClick = { onOpenVideo(video) },
+                            onClick = {
+                                if (video.chhotuCheckStatus != "APPROVED") {
+                                    onOpenChhotuCheck(video)
+                                } else {
+                                    onOpenVideo(video)
+                                }
+                            },
+                            onOpenChhotuCheck = { onOpenChhotuCheck(video) },
+                            onOpenAnalytics = { onOpenAnalytics(video) },
                             onEdit = { editingVideo = video },
                             onDelete = { deletingVideo = video },
                             onShare = {
@@ -336,6 +349,8 @@ fun YourVideosScreen(
 private fun YourVideoManageCard(
     video: VideoEntity,
     onClick: () -> Unit,
+    onOpenChhotuCheck: () -> Unit,
+    onOpenAnalytics: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onShare: () -> Unit,
@@ -408,29 +423,58 @@ private fun YourVideoManageCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (video.visibility != VideoVisibility.PUBLIC.name) {
-                    val statusColor = when (video.visibility) {
-                        VideoVisibility.PRIVATE.name -> LotusCoral
-                        VideoVisibility.UNLISTED.name -> SaffronFlame
-                        else -> Color(0xFF8B91A6)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (video.visibility != VideoVisibility.PUBLIC.name) {
+                        val statusColor = when (video.visibility) {
+                            VideoVisibility.PRIVATE.name -> LotusCoral
+                            VideoVisibility.UNLISTED.name -> SaffronFlame
+                            else -> Color(0xFF8B91A6)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = statusColor.copy(alpha = 0.18f)
+                        ) {
+                            Text(
+                                text = if (isHidden) "Hidden (Private)" else video.visibility.lowercase().replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = statusColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "Public",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EmeraldVerified
+                        )
+                    }
+
+                    val chhotuColor = when (video.chhotuCheckStatus) {
+                        "APPROVED" -> EmeraldVerified
+                        "REJECTED" -> LotusCoral
+                        else -> AmberGold
+                    }
+                    val chhotuLabel = when (video.chhotuCheckStatus) {
+                        "APPROVED" -> "Chhotu Approved"
+                        "REJECTED" -> "Rejected • Fix"
+                        else -> "Checking..."
                     }
                     Surface(
+                        onClick = onOpenChhotuCheck,
                         shape = RoundedCornerShape(6.dp),
-                        color = statusColor.copy(alpha = 0.18f)
+                        color = chhotuColor.copy(alpha = 0.16f)
                     ) {
                         Text(
-                            text = if (isHidden) "Hidden (Private)" else video.visibility.lowercase().replaceFirstChar { it.uppercase() },
+                            text = chhotuLabel,
                             style = MaterialTheme.typography.labelSmall,
-                            color = statusColor,
+                            color = chhotuColor,
+                            fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
-                } else {
-                    Text(
-                        text = "Public",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = EmeraldVerified
-                    )
                 }
             }
 
@@ -449,6 +493,22 @@ private fun YourVideoManageCard(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Analytics") },
+                        leadingIcon = { Icon(Icons.Filled.BarChart, contentDescription = null, tint = SaffronFlame) },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenAnalytics()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Chhotu AI Check") },
+                        leadingIcon = { Icon(Icons.Filled.SmartToy, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenChhotuCheck()
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("Edit") },
                         leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },

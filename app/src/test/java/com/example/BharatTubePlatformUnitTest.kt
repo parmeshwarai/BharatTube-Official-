@@ -283,5 +283,154 @@ class BharatTubePlatformUnitTest {
         assertTrue(defaults.appEnabled)
         assertFalse(defaults.maintenanceMode)
         assertEquals(120.0, defaults.per1000ViewsPaymentInr, 0.01)
+        assertFalse(defaults.chhotuAiStrictMode)
+    }
+
+    @Test
+    fun chhotuUploadModeratorApprovesCleanVideoAndRejectsViolations() {
+        val clean = com.example.chhotuai.ChhotuUploadModerator.evaluate(
+            title = "Jaipur Street Food Tour 2026",
+            description = "Exploring authentic Rajasthani kachori and lassi spots in the old city.",
+            hashtags = "#jaipur #foodvlog #bharattube",
+            videoUri = "content://media/video/101",
+            thumbnailUri = "content://media/img/101",
+            format = com.example.data.model.VideoFormat.LONG,
+            durationSeconds = 420,
+            strictMode = false
+        )
+        assertTrue(clean.approved)
+        assertEquals("APPROVED", clean.status)
+        assertEquals(5, clean.checks.size)
+        assertTrue(clean.checks.all { it.status == com.example.chhotuai.CheckItemStatus.PASSED })
+
+        // Copyright violation should reject in both modes
+        val copyright = com.example.chhotuai.ChhotuUploadModerator.evaluate(
+            title = "New Full Movie Leak HDCam Download",
+            description = "Watch now pirated film",
+            hashtags = "#movie",
+            videoUri = "content://media/video/102",
+            thumbnailUri = "thumb_1",
+            format = com.example.data.model.VideoFormat.LONG,
+            durationSeconds = 600,
+            strictMode = false
+        )
+        assertFalse(copyright.approved)
+        assertEquals("REJECTED", copyright.status)
+        assertEquals(
+            com.example.chhotuai.CheckItemStatus.FAILED,
+            copyright.checks.first { it.key == "COPYRIGHT" }.status
+        )
+        assertTrue(copyright.rejectionReason.contains("Copyright Check"))
+        assertTrue(copyright.fixSuggestion.isNotBlank())
+
+        // Unsafe / abusive keyword should reject
+        val unsafe = com.example.chhotuai.ChhotuUploadModerator.evaluate(
+            title = "Ganda Video Viral Clip",
+            description = "Watch clip",
+            hashtags = "",
+            videoUri = "content://media/video/103",
+            thumbnailUri = "thumb_1",
+            format = com.example.data.model.VideoFormat.SHORT,
+            durationSeconds = 30,
+            strictMode = false
+        )
+        assertFalse(unsafe.approved)
+        assertEquals(
+            com.example.chhotuai.CheckItemStatus.FAILED,
+            unsafe.checks.first { it.key == "SAFETY" }.status
+        )
+    }
+
+    @Test
+    fun chhotuUploadModeratorStrictModeEnforcesStricterMetadataAndCaps() {
+        val normalRes = com.example.chhotuai.ChhotuUploadModerator.evaluate(
+            title = "DAILY TECH NEWS UPDATE",
+            description = "Quick clip",
+            hashtags = "#tech",
+            videoUri = "content://media/video/104",
+            thumbnailUri = "",
+            format = com.example.data.model.VideoFormat.LONG,
+            durationSeconds = 180,
+            strictMode = false
+        )
+        assertTrue(normalRes.approved)
+        assertEquals("NORMAL", normalRes.modeLabel)
+
+        val strictRes = com.example.chhotuai.ChhotuUploadModerator.evaluate(
+            title = "DAILY TECH NEWS UPDATE",
+            description = "Quick clip",
+            hashtags = "#tech",
+            videoUri = "content://media/video/104",
+            thumbnailUri = "",
+            format = com.example.data.model.VideoFormat.LONG,
+            durationSeconds = 180,
+            strictMode = true
+        )
+        assertFalse(strictRes.approved)
+        assertEquals("STRICT", strictRes.modeLabel)
+        assertEquals(
+            com.example.chhotuai.CheckItemStatus.FAILED,
+            strictRes.checks.first { it.key == "QUALITY" }.status
+        )
+        assertEquals(
+            com.example.chhotuai.CheckItemStatus.FAILED,
+            strictRes.checks.first { it.key == "TITLE_THUMB" }.status
+        )
+    }
+
+    @Test
+    fun analyticsEngineComputesTimeframesRetentionTrafficAndEarnings() {
+        val sampleVideo = com.example.data.model.VideoEntity(
+            id = "v_test_1",
+            channelId = "ch_1",
+            channelName = "Test Studio",
+            channelHandle = "@teststudio",
+            title = "Compose Architecture Deep Dive",
+            description = "Detailed walkthrough of modern Android UI",
+            category = "Technology",
+            languageCode = "en",
+            countryCode = "IN",
+            format = com.example.data.model.VideoFormat.LONG.name,
+            durationSeconds = 720,
+            thumbnailKey = "thumb_1",
+            videoUri = "sample://1",
+            hashtags = "#android",
+            viewCount = 50_000L,
+            likeCount = 4_200L,
+            shareCount = 500L,
+            watchTimeMinutes = 180_000L,
+            subscribersGained = 420,
+            subscribersLost = 18,
+            netRevenueInr = 2500.0
+        )
+        val settings = com.example.data.model.PlatformSettingsEntity()
+
+        val snap7 = com.example.data.model.BharatTubeAnalyticsEngine.buildVideoAnalytics(
+            video = sampleVideo,
+            commentCount = 140,
+            timeframe = com.example.data.model.AnalyticsTimeframe.LAST_7_DAYS,
+            settings = settings
+        )
+        val snapAll = com.example.data.model.BharatTubeAnalyticsEngine.buildVideoAnalytics(
+            video = sampleVideo,
+            commentCount = 140,
+            timeframe = com.example.data.model.AnalyticsTimeframe.ALL_TIME,
+            settings = settings
+        )
+
+        assertTrue(snapAll.views > snap7.views)
+        assertEquals(50_000L, snapAll.views)
+        assertEquals(500L, snapAll.shares)
+        assertEquals(3000.0, snapAll.watchTimeHours, 0.01)
+        assertEquals(420, snapAll.subscribersGained)
+        assertEquals(18, snapAll.subscribersLost)
+        assertEquals(402, snapAll.netSubscribers)
+        assertTrue(snapAll.earningsInr > snap7.earningsInr)
+        assertEquals(100, snapAll.trafficSources.sumOf { it.percent })
+        assertTrue(snapAll.trafficSources.none { it.label.contains("YouTube", ignoreCase = true) })
+        assertEquals(100, snapAll.ageGroups.sumOf { it.percent })
+        assertEquals(100, snapAll.genderSplit.sumOf { it.percent })
+        assertTrue(snapAll.topCities.isNotEmpty())
+        assertTrue(snapAll.topCountries.any { it.label == "India" })
     }
 }

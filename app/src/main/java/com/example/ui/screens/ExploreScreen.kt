@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.VideoEntity
+import com.example.data.model.VideoVisibility
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -73,7 +74,9 @@ fun ExploreScreen(
 
     val filteredTrending = remember(videos, filterCountry, filterLang, boostedUserIds, trendingBoostEnabled, workBoostPercent, channelOwnerMap) {
         videos.filter { video ->
-            (filterCountry == "ALL" || video.countryCode == filterCountry) &&
+            video.visibility == VideoVisibility.PUBLIC.name &&
+                video.chhotuCheckStatus == "APPROVED" &&
+                (filterCountry == "ALL" || video.countryCode == filterCountry) &&
                 (filterLang == "ALL" || video.languageCode == filterLang)
         }.sortedByDescending { video ->
             val ownerId = channelOwnerMap[video.channelId]

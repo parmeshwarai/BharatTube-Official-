@@ -88,6 +88,15 @@ data class VideoEntity(
     val liveViewerCount: Int = 0,
     val allowComments: Boolean = true,
     val audienceType: String = "NOT_FOR_KIDS",
+    val shareCount: Long = 0L,
+    val watchTimeMinutes: Long = 0L,
+    val subscribersGained: Int = 0,
+    val subscribersLost: Int = 0,
+    val chhotuCheckStatus: String = "APPROVED", // "CHECKING", "APPROVED", "REJECTED"
+    val chhotuRejectionReason: String = "",
+    val chhotuCheckSummary: String = "",
+    val chhotuCheckMode: String = "NORMAL",
+    val chhotuCheckedAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -290,6 +299,7 @@ data class PlatformSettingsEntity(
     val downloadsEnabled: Boolean = true,
     val communityPostsEnabled: Boolean = true,
     val chhotuAiEnabled: Boolean = true,
+    val chhotuAiStrictMode: Boolean = false,
     val appEnabled: Boolean = true,
     val maintenanceMode: Boolean = false,
     val brandControlEnabled: Boolean = true,

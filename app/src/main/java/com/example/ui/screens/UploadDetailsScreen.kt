@@ -86,6 +86,10 @@ import kotlinx.coroutines.withContext
 fun UploadDetailsScreen(
     videoUri: String,
     initialIsShort: Boolean,
+    initialTitle: String = "",
+    initialDescription: String = "",
+    initialThumbnailUri: String = "",
+    initialCategory: String = "Entertainment",
     playlists: List<PlaylistEntity>,
     onBack: () -> Unit,
     onCreatePlaylist: (String, String, Boolean) -> Unit,
@@ -105,14 +109,14 @@ fun UploadDetailsScreen(
 ) {
     val context = LocalContext.current
 
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var customThumbnailUri by remember { mutableStateOf("") }
+    var title by remember(initialTitle) { mutableStateOf(initialTitle) }
+    var description by remember(initialDescription) { mutableStateOf(initialDescription) }
+    var customThumbnailUri by remember(initialThumbnailUri) { mutableStateOf(initialThumbnailUri) }
     var format by remember(initialIsShort) {
         mutableStateOf(if (initialIsShort) VideoFormat.SHORT else VideoFormat.LONG)
     }
     var visibility by remember { mutableStateOf(VideoVisibility.PUBLIC) }
-    var category by remember { mutableStateOf("Entertainment") }
+    var category by remember(initialCategory) { mutableStateOf(initialCategory.ifBlank { "Entertainment" }) }
     var audienceType by remember { mutableStateOf("NOT_FOR_KIDS") }
     var selectedPlaylistId by remember { mutableStateOf<String?>(null) }
     var allowComments by remember { mutableStateOf(true) }

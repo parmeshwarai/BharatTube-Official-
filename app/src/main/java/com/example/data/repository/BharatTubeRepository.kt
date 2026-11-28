@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import com.example.chhotuai.ChhotuAiBackendClient
 import com.example.chhotuai.ChhotuDiagnosticsEngine
 import com.example.chhotuai.ChhotuSecurityGuard
+import com.example.chhotuai.ChhotuUploadModerator
 import com.example.chhotuai.ChhotuUserSupportEngine
 import com.example.chhotuai.CheckStatus
 import com.example.chhotuai.SystemHealthSnapshot
@@ -111,7 +112,7 @@ class BharatTubeRepository(
             .eachCount()
 
         return videos
-            .filter { it.visibility == VideoVisibility.PUBLIC.name }
+            .filter { it.visibility == VideoVisibility.PUBLIC.name && it.chhotuCheckStatus == "APPROVED" }
             .filter { !restrictedMode || !it.title.contains("18+", ignoreCase = true) }
             .sortedByDescending { video ->
                 val isUserUploaded = video.id.startsWith("vid_upl_") || video.channelId in myChannelIds
@@ -356,6 +357,7 @@ class BharatTubeRepository(
 
     suspend fun recordVideoPlay(video: VideoEntity, userId: String, historyPaused: Boolean) {
         dao.incrementVideoView(video.id)
+        dao.addWatchTimeMinutes(video.id, if (video.format == VideoFormat.SHORT.name) 1L else 4L)
         if (!historyPaused) {
             dao.upsertWatchHistory(
                 WatchHistoryEntity(
@@ -369,6 +371,10 @@ class BharatTubeRepository(
             )
         }
         runCatching { evaluateAutoPayoutForChannel(video.channelId) }
+    }
+
+    suspend fun recordVideoShare(videoId: String) {
+        dao.incrementVideoShare(videoId)
     }
 
     suspend fun savePlaybackPosition(videoId: String, positionMs: Long) {
@@ -589,6 +595,7 @@ class BharatTubeRepository(
                         status = UploadStatus.COMPLETED.name
                     )
                     dao.upsertUploadTask(completed)
+                    val settingsNow = dao.getPlatformSettings() ?: PlatformSettingsEntity()
                     val video = VideoEntity(
                         id = "vid_upl_${UUID.randomUUID().toString().take(8)}",
                         channelId = channel.id,
@@ -609,18 +616,24 @@ class BharatTubeRepository(
                             if (completed.format == VideoFormat.SHORT.name) VideoFormat.SHORT else VideoFormat.LONG
                         ),
                         captionsText = "Auto-captions pending cloud transcoding configuration.",
-                        copyrightStatus = "SELF_DECLARED_CLEARED"
+                        copyrightStatus = "SELF_DECLARED_CLEARED",
+                        chhotuCheckStatus = if (settingsNow.chhotuAiEnabled) "CHECKING" else "APPROVED",
+                        chhotuCheckMode = if (settingsNow.chhotuAiStrictMode) "STRICT" else "NORMAL"
                     )
                     dao.upsertVideo(video)
-                    dao.insertNotification(
-                        NotificationEntity(
-                            id = "notif_${UUID.randomUUID().toString().take(8)}",
-                            userId = completed.ownerUserId,
-                            category = "UPLOAD",
-                            title = "Upload Ready: ${completed.title}",
-                            body = "Published to BharatTube (${completed.visibility})."
+                    if (settingsNow.chhotuAiEnabled) {
+                        runChhotuUploadCheck(video.id, completed.ownerUserId)
+                    } else {
+                        dao.insertNotification(
+                            NotificationEntity(
+                                id = "notif_${UUID.randomUUID().toString().take(8)}",
+                                userId = completed.ownerUserId,
+                                category = "UPLOAD",
+                                title = "Upload Ready: ${completed.title}",
+                                body = "Published to BharatTube (${completed.visibility})."
+                            )
                         )
-                    )
+                    }
                     break
                 } else {
                     dao.upsertUploadTask(
@@ -671,7 +684,8 @@ class BharatTubeRepository(
         countryCode: String,
         allowComments: Boolean,
         audienceType: String,
-        playlistId: String?
+        playlistId: String?,
+        existingVideoId: String? = null
     ): Result<VideoEntity> {
         val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
         checkUploadEligibility(user, format, settings)?.let { msg ->
@@ -717,8 +731,13 @@ class BharatTubeRepository(
         )
         dao.upsertUploadTask(task)
 
+        val existingVideo = if (!existingVideoId.isNullOrBlank()) dao.getVideo(existingVideoId) else null
+        val videoId = existingVideo?.id ?: "vid_upl_${UUID.randomUUID().toString().take(8)}"
+        val initialStatus = if (settings.chhotuAiEnabled) "CHECKING" else "APPROVED"
+        val checkMode = if (settings.chhotuAiStrictMode) "STRICT" else "NORMAL"
+
         val video = VideoEntity(
-            id = "vid_upl_${UUID.randomUUID().toString().take(8)}",
+            id = videoId,
             channelId = channel.id,
             channelName = channel.name,
             channelHandle = channel.handle,
@@ -733,10 +752,17 @@ class BharatTubeRepository(
             format = format.name,
             visibility = visibility.name,
             durationSeconds = durationSec,
+            viewCount = existingVideo?.viewCount ?: 0L,
+            likeCount = existingVideo?.likeCount ?: 0L,
             allowComments = allowComments,
             audienceType = audienceType,
             captionsText = "",
             copyrightStatus = "SELF_DECLARED_CLEARED",
+            chhotuCheckStatus = initialStatus,
+            chhotuRejectionReason = "",
+            chhotuCheckSummary = "",
+            chhotuCheckMode = checkMode,
+            chhotuCheckedAt = if (settings.chhotuAiEnabled) 0L else now,
             createdAt = now
         )
         dao.upsertVideo(video)
@@ -745,16 +771,69 @@ class BharatTubeRepository(
             dao.addVideoToPlaylist(PlaylistVideoCrossRef(playlistId, video.id))
         }
 
+        if (settings.chhotuAiEnabled) {
+            uploadScope.launch {
+                delay(1800L)
+                runChhotuUploadCheck(video.id, user.uid)
+            }
+        } else {
+            dao.insertNotification(
+                NotificationEntity(
+                    id = "notif_${UUID.randomUUID().toString().take(8)}",
+                    userId = user.uid,
+                    category = "UPLOAD",
+                    title = "Uploaded: ${video.title}",
+                    body = "Your ${if (format == VideoFormat.SHORT) "Short" else "Video"} is now live (${visibility.name})."
+                )
+            )
+        }
+        return Result.success(video)
+    }
+
+    suspend fun runChhotuUploadCheck(videoId: String, ownerUserId: String? = null) {
+        val video = dao.getVideo(videoId) ?: return
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        val format = runCatching { VideoFormat.valueOf(video.format) }.getOrDefault(VideoFormat.LONG)
+        val result = ChhotuUploadModerator.evaluate(
+            title = video.title,
+            description = video.description,
+            hashtags = video.hashtags,
+            videoUri = video.videoUri,
+            thumbnailUri = video.thumbnailKey,
+            format = format,
+            durationSeconds = video.durationSeconds,
+            strictMode = settings.chhotuAiStrictMode
+        )
+        val fullReason = if (result.approved) {
+            ""
+        } else {
+            "${result.rejectionReason}\n\nHow to Fix: ${result.fixSuggestion}"
+        }
+        val checkedAt = System.currentTimeMillis()
+        dao.updateVideoChhotuCheck(
+            videoId = video.id,
+            status = result.status,
+            reason = fullReason,
+            summary = result.serializeSummary(),
+            mode = result.modeLabel,
+            checkedAt = checkedAt
+        )
+        val targetUserId = ownerUserId
+            ?: dao.getAllChannelsSync().firstOrNull { it.id == video.channelId }?.ownerUserId
+            ?: return
         dao.insertNotification(
             NotificationEntity(
                 id = "notif_${UUID.randomUUID().toString().take(8)}",
-                userId = user.uid,
-                category = "UPLOAD",
-                title = "Uploaded: ${video.title}",
-                body = "Your ${if (format == VideoFormat.SHORT) "Short" else "Video"} is now live (${visibility.name})."
+                userId = targetUserId,
+                category = "CHHOTU_CHECK",
+                title = if (result.approved) "Chhotu AI Approved: ${video.title}" else "Chhotu AI Rejected: ${video.title}",
+                body = if (result.approved) {
+                    "All 5 checks passed (${result.modeLabel} mode). Your video is now live on BharatTube Home Page!"
+                } else {
+                    "Action needed: ${result.fixSuggestion}"
+                }
             )
         )
-        return Result.success(video)
     }
 
     suspend fun startLiveBroadcast(

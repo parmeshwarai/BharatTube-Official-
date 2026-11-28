@@ -121,6 +121,7 @@ fun ProfileScreen(
     onOpenSearch: () -> Unit,
     onOpenChhotuAi: () -> Unit,
     onOpenVideo: (VideoEntity) -> Unit,
+    onOpenChhotuCheck: (VideoEntity) -> Unit = {},
     onOpenPlaylistsLibrary: () -> Unit,
     onOpenUpload: () -> Unit,
     onSwitchUser: (String) -> Unit,
@@ -764,7 +765,13 @@ fun ProfileScreen(
                                 rowVideos.forEach { video ->
                                     ProfileVideoGridCard(
                                         video = video,
-                                        onClick = { onOpenVideo(video) },
+                                        onClick = {
+                                            if (video.chhotuCheckStatus != "APPROVED") {
+                                                onOpenChhotuCheck(video)
+                                            } else {
+                                                onOpenVideo(video)
+                                            }
+                                        },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -832,7 +839,26 @@ private fun ProfileVideoGridCard(
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
-            if (video.visibility != VideoVisibility.PUBLIC.name) {
+            if (video.chhotuCheckStatus != "APPROVED") {
+                val badgeColor = if (video.chhotuCheckStatus == "REJECTED") LotusCoral else AmberGold
+                val badgeLabel = if (video.chhotuCheckStatus == "REJECTED") "Rejected • Fix" else "Chhotu Checking..."
+                Surface(
+                    color = Color.Black.copy(alpha = 0.84f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.65f)),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                ) {
+                    Text(
+                        text = badgeLabel,
+                        color = badgeColor,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            } else if (video.visibility != VideoVisibility.PUBLIC.name) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.72f),
                     shape = RoundedCornerShape(6.dp),

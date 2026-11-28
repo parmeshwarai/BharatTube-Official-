@@ -84,8 +84,10 @@ import com.example.ui.screens.ShortsScreen
 import com.example.ui.screens.SubscriptionsScreen
 import com.example.ui.screens.SuperAdminScreen
 import com.example.ui.screens.SupportScreen
+import com.example.ui.screens.UploadCheckingFlowScreen
 import com.example.ui.screens.UploadDetailsScreen
 import com.example.ui.screens.UploadScreen
+import com.example.ui.screens.VideoAnalyticsDetailScreen
 import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.screens.YourVideosScreen
 import com.example.ui.theme.AmberGold
@@ -302,18 +304,31 @@ fun BharatTubeApp(
                 }
 
                 composable(
-                    route = "upload_details?uri={uri}&isShort={isShort}",
+                    route = "upload_details?uri={uri}&isShort={isShort}&videoId={videoId}&title={title}&desc={desc}&thumb={thumb}&cat={cat}",
                     arguments = listOf(
                         navArgument("uri") { type = NavType.StringType; defaultValue = "" },
-                        navArgument("isShort") { type = NavType.BoolType; defaultValue = false }
+                        navArgument("isShort") { type = NavType.BoolType; defaultValue = false },
+                        navArgument("videoId") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("title") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("desc") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("thumb") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("cat") { type = NavType.StringType; defaultValue = "Entertainment" }
                     )
                 ) { entry ->
-                    val encodedUri = entry.arguments?.getString("uri") ?: ""
-                    val decodedUri = Uri.decode(encodedUri)
+                    val decodedUri = Uri.decode(entry.arguments?.getString("uri") ?: "")
                     val isShort = entry.arguments?.getBoolean("isShort") ?: false
+                    val existingVideoId = entry.arguments?.getString("videoId")?.ifBlank { null }
+                    val initialTitle = Uri.decode(entry.arguments?.getString("title") ?: "")
+                    val initialDesc = Uri.decode(entry.arguments?.getString("desc") ?: "")
+                    val initialThumb = Uri.decode(entry.arguments?.getString("thumb") ?: "")
+                    val initialCat = Uri.decode(entry.arguments?.getString("cat") ?: "Entertainment")
                     UploadDetailsScreen(
                         videoUri = decodedUri,
                         initialIsShort = isShort,
+                        initialTitle = initialTitle,
+                        initialDescription = initialDesc,
+                        initialThumbnailUri = initialThumb,
+                        initialCategory = initialCat,
                         playlists = playlists,
                         onBack = { navController.popBackStack() },
                         onCreatePlaylist = viewModel::createPlaylist,
@@ -329,14 +344,53 @@ fun BharatTubeApp(
                                 hashtags = tags,
                                 allowComments = allowComments,
                                 audienceType = audience,
-                                playlistId = plId
-                            ) {
-                                navController.navigate(BharatTab.HOME.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
-                                    launchSingleTop = true
+                                playlistId = plId,
+                                existingVideoId = existingVideoId
+                            ) { uploadedVideo ->
+                                if (settings.chhotuAiEnabled) {
+                                    navController.navigate("upload_check/${uploadedVideo.id}") {
+                                        popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                } else {
+                                    navController.navigate(BharatTab.HOME.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
+                                        launchSingleTop = true
+                                    }
                                 }
                             }
                         }
+                    )
+                }
+
+                composable(
+                    route = "upload_check/{videoId}",
+                    arguments = listOf(navArgument("videoId") { type = NavType.StringType })
+                ) { entry ->
+                    val vidId = entry.arguments?.getString("videoId") ?: ""
+                    UploadCheckingFlowScreen(
+                        videoId = vidId,
+                        observeVideo = viewModel::observeVideo,
+                        strictModeEnabled = settings.chhotuAiStrictMode,
+                        onBack = { navController.popBackStack() },
+                        onGoHome = {
+                            navController.navigate(BharatTab.HOME.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
+                        onFixAndReupload = { v ->
+                            val uriEnc = Uri.encode(v.videoUri.ifBlank { "sample_upload://fix/${v.id}" })
+                            val titleEnc = Uri.encode(v.title)
+                            val descEnc = Uri.encode(v.description)
+                            val thumbEnc = Uri.encode(v.thumbnailKey)
+                            val catEnc = Uri.encode(v.category)
+                            val isShortArg = v.format == com.example.data.model.VideoFormat.SHORT.name
+                            navController.navigate(
+                                "upload_details?uri=$uriEnc&isShort=$isShortArg&videoId=${v.id}&title=$titleEnc&desc=$descEnc&thumb=$thumbEnc&cat=$catEnc"
+                            )
+                        },
+                        onOpenYourVideos = { navController.navigate("your_videos") }
                     )
                 }
 
@@ -433,6 +487,7 @@ fun BharatTubeApp(
                         onOpenSearch = { navController.navigate("search") },
                         onOpenChhotuAi = { navController.navigate("chhotu_ai") },
                         onOpenVideo = openVideoWithAd,
+                        onOpenChhotuCheck = { v -> navController.navigate("upload_check/${v.id}") },
                         onOpenPlaylistsLibrary = { navController.navigate("library?tab=3") },
                         onOpenUpload = { navController.navigate("camera?mode=VIDEO") },
                         onSwitchUser = viewModel::switchUser,
@@ -497,6 +552,8 @@ fun BharatTubeApp(
                         onUploadClick = { navController.navigate("camera?mode=VIDEO") },
                         onOpenProfileMenu = { navController.navigate("profile_menu") },
                         onOpenVideo = openVideoWithAd,
+                        onOpenChhotuCheck = { v -> navController.navigate("upload_check/${v.id}") },
+                        onOpenAnalytics = { v -> navController.navigate("video_analytics/${v.id}") },
                         onUpdateVideo = viewModel::updateVideoMetadata,
                         onToggleHideVideo = viewModel::toggleHideVideo,
                         onDeleteVideo = viewModel::deleteVideo
@@ -607,7 +664,8 @@ fun BharatTubeApp(
                         onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onSubmitReport = viewModel::submitReport,
-                        onEnterPip = onEnterPip
+                        onEnterPip = onEnterPip,
+                        onShareVideo = viewModel::recordVideoShare
                     )
                 }
 
@@ -669,8 +727,29 @@ fun BharatTubeApp(
                         settings = settings,
                         countryCode = prefs.preferredCountry,
                         onBack = { navController.popBackStack() },
+                        onOpenNotifications = { navController.navigate("notifications") },
+                        onOpenSettings = { navController.navigate("settings") },
+                        onOpenVideoAnalytics = { v -> navController.navigate("video_analytics/${v.id}") },
+                        onOpenChhotuCheck = { v -> navController.navigate("upload_check/${v.id}") },
                         onInitiatePayout = viewModel::initiatePayout,
                         onSavePayoutMethod = viewModel::updatePayoutMethodDetails
+                    )
+                }
+
+                composable(
+                    route = "video_analytics/{videoId}",
+                    arguments = listOf(navArgument("videoId") { type = NavType.StringType })
+                ) { entry ->
+                    val vidId = entry.arguments?.getString("videoId") ?: ""
+                    VideoAnalyticsDetailScreen(
+                        videoId = vidId,
+                        observeVideo = viewModel::observeVideo,
+                        observeComments = viewModel::observeComments,
+                        user = currentUser,
+                        settings = settings,
+                        countryCode = prefs.preferredCountry,
+                        onBack = { navController.popBackStack() },
+                        onShareAnalytics = { v -> viewModel.recordVideoShare(v.id) }
                     )
                 }
 

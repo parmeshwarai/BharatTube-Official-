@@ -70,7 +70,7 @@ fun SubscriptionsScreen(
     val feedVideos = remember(videos, subscribedChannels, selectedChannelId) {
         val subIds = subscribedChannels.map { it.id }.toSet()
         videos
-            .filter { it.visibility == VideoVisibility.PUBLIC.name }
+            .filter { it.visibility == VideoVisibility.PUBLIC.name && it.chhotuCheckStatus == "APPROVED" }
             .filter {
                 if (selectedChannelId != null) {
                     it.channelId == selectedChannelId

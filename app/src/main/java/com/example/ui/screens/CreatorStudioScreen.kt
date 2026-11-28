@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,14 +12,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,6 +32,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,10 +51,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.data.model.AnalyticsTimeframe
+import com.example.data.model.BharatTubeAnalyticsEngine
 import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.PayoutEntity
@@ -55,6 +67,8 @@ import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.UserProfileEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoFormat
+import com.example.ui.components.BharatTubeLogoMark
+import com.example.ui.components.BharatTubeThumbnail
 import com.example.ui.components.IntegrationDisclosureBanner
 import com.example.ui.theme.AmberGold
 import com.example.ui.theme.EmeraldVerified
@@ -75,6 +89,10 @@ fun CreatorStudioScreen(
     settings: PlatformSettingsEntity,
     countryCode: String,
     onBack: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenVideoAnalytics: (VideoEntity) -> Unit,
+    onOpenChhotuCheck: (VideoEntity) -> Unit,
     onInitiatePayout: (ChannelEntity, Double, PayoutMethod) -> Unit,
     onSavePayoutMethod: (PayoutMethod, String, String) -> Unit
 ) {
@@ -85,11 +103,18 @@ fun CreatorStudioScreen(
     val longVideos = channelVideos.filter { it.format != VideoFormat.SHORT.name }
     val shorts = channelVideos.filter { it.format == VideoFormat.SHORT.name }
 
+    var timeframe by remember { mutableStateOf(AnalyticsTimeframe.LAST_7_DAYS) }
+    val overview = remember(channelVideos, timeframe, settings, user?.boostPercent) {
+        BharatTubeAnalyticsEngine.buildStudioOverview(
+            videos = channelVideos,
+            timeframe = timeframe,
+            settings = settings,
+            userBoostPct = user?.boostPercent ?: 0
+        )
+    }
+
     val totalViews = channelVideos.sumOf { it.viewCount }
-    val totalWatchHours = (totalViews * 4.2 / 60.0).toLong()
-    val longNetInr = longVideos.sumOf { it.netRevenueInr }
-    val shortsNetInr = shorts.sumOf { it.netRevenueInr }
-    val totalNetInr = longNetInr + shortsNetInr
+    val totalNetInr = channelVideos.sumOf { it.netRevenueInr }
     val creatorTotalInr = BharatTubeCatalog.calculateCreatorEarningsInr(
         viewCount = totalViews,
         netRevenueInr = totalNetInr,
@@ -119,10 +144,27 @@ fun CreatorStudioScreen(
         containerColor = Color(0xFF0E1016),
         topBar = {
             TopAppBar(
-                title = { Text("Creator Studio", color = Color.White, fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BharatTubeLogoMark(modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("BharatTube", color = SaffronFlame, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Creator Studio", color = Color(0xFFA0A5B8), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.testTag("studio_back_button")) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenNotifications) {
+                        Icon(Icons.Filled.Notifications, contentDescription = "Notifications", tint = Color.White)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0E1016))
@@ -135,38 +177,229 @@ fun CreatorStudioScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
-                Text(
-                    text = activeChannel?.let { "${it.name} (${it.handle})" } ?: "No Channel Active",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    "Aggregate creator analytics only — individual viewer histories remain private.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFA0A5B8)
-                )
-            }
-
-            // KPI Summary Grid
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StudioMetricCard(
-                        label = "Total Views",
-                        value = BharatTubeCatalog.formatCompactCount(totalViews),
-                        sub = "${longVideos.size} Videos • ${shorts.size} Shorts",
-                        modifier = Modifier.weight(1f)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Analytics",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
-                    StudioMetricCard(
-                        label = "Subscribers",
-                        value = BharatTubeCatalog.formatCompactCount(activeChannel?.subscriberCount ?: 0L),
-                        sub = "Watch Time: ${BharatTubeCatalog.formatCompactCount(totalWatchHours)}h",
-                        modifier = Modifier.weight(1f)
+                    Text(
+                        text = activeChannel?.let { "${it.name} (${it.handle})" } ?: "No Channel Active",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFA0A5B8)
                     )
                 }
             }
 
-            // Creator Earnings Card (NO 50/50 split text shown here per Brand Rule)
+            // Timeframe Filter Chips: Last 7 Days | 28 Days | 90 Days | All Time
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(AnalyticsTimeframe.entries) { option ->
+                        FilterChip(
+                            selected = timeframe == option,
+                            onClick = { timeframe = option },
+                            label = { Text(option.label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = SaffronFlame,
+                                selectedLabelColor = Color.Black,
+                                containerColor = Color(0xFF1A1E2B),
+                                labelColor = Color.White
+                            ),
+                            modifier = Modifier.testTag("studio_filter_${option.name}")
+                        )
+                    }
+                }
+            }
+
+            // Studio Overview Chart + KPIs (Ref WA6101)
+            item {
+                AnalyticsCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Overview • ${timeframe.label}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFA0A5B8))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "• Views  ${BharatTubeCatalog.formatCompactCount(overview.totalViews)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = SaffronFlame,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "• Earnings  ${BharatTubeCatalog.formatCurrency(overview.totalEarningsInr, countryCode)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = EmeraldVerified,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    AnalyticsLineGraph(
+                        values = overview.trendSeries,
+                        lineColor = SaffronFlame,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(105.dp)
+                            .testTag("studio_overview_graph")
+                    )
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        overview.dateLabels.forEach { lbl ->
+                            Text(lbl, style = MaterialTheme.typography.labelSmall, color = Color(0xFF8B91A6))
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        StudioMetricCard(
+                            label = "Views",
+                            value = BharatTubeCatalog.formatCompactCount(overview.totalViews),
+                            sub = "+${overview.viewsChangePct}%",
+                            modifier = Modifier.weight(1f)
+                        )
+                        StudioMetricCard(
+                            label = "Watch time",
+                            value = "${BharatTubeCatalog.formatCompactCount(overview.totalWatchHours)}h",
+                            sub = "+${overview.watchTimeChangePct}%",
+                            modifier = Modifier.weight(1f)
+                        )
+                        StudioMetricCard(
+                            label = "Earnings",
+                            value = BharatTubeCatalog.formatCurrency(overview.totalEarningsInr, countryCode),
+                            sub = "+${overview.earningsChangePct}%",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            // Video-wise List with Views, Watch Time, Per-Video Earnings, Chhotu AI Status, and Analytics Button
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Videos • ${channelVideos.size} results",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "${longVideos.size} Videos • ${shorts.size} Shorts",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFA0A5B8)
+                    )
+                }
+            }
+
+            items(channelVideos, key = { it.id }) { video ->
+                val snap = remember(video, timeframe, settings, user?.boostPercent) {
+                    BharatTubeAnalyticsEngine.buildVideoAnalytics(
+                        video = video,
+                        commentCount = 0,
+                        timeframe = timeframe,
+                        settings = settings,
+                        userBoostPct = user?.boostPercent ?: 0
+                    )
+                }
+                val chhotuColor = when (video.chhotuCheckStatus) {
+                    "APPROVED" -> EmeraldVerified
+                    "REJECTED" -> LotusCoral
+                    else -> AmberGold
+                }
+                val chhotuLabel = when (video.chhotuCheckStatus) {
+                    "APPROVED" -> "Chhotu AI Status: Approved"
+                    "REJECTED" -> "Chhotu AI Status: Rejected"
+                    else -> "Chhotu AI Status: Checking..."
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF151822),
+                    border = BorderStroke(1.dp, Color(0xFF252938)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_video_card_${video.id}")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(108.dp)
+                                    .height(64.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                            ) {
+                                BharatTubeThumbnail(
+                                    thumbnailKey = video.thumbnailKey,
+                                    contentDescription = video.title,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    text = video.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${BharatTubeCatalog.formatCompactCount(snap.views)} views • ${String.format("%.0f", snap.watchTimeHours)}h watch • ${BharatTubeCatalog.formatCurrency(snap.earningsInr, countryCode)} • ${BharatTubeCatalog.formatCompactCount(snap.likes)} likes",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFA0A5B8),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = chhotuColor.copy(alpha = 0.18f),
+                                modifier = Modifier.clickable { onOpenChhotuCheck(video) }
+                            ) {
+                                Text(
+                                    text = chhotuLabel,
+                                    color = chhotuColor,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { onOpenVideoAnalytics(video) },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, SaffronFlame.copy(alpha = 0.65f)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp).testTag("video_analytics_btn_${video.id}")
+                            ) {
+                                Icon(Icons.Filled.BarChart, contentDescription = null, tint = SaffronFlame, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Analytics", color = SaffronFlame, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Creator Revenue & Balance Card (NO 50/50 split text shown here per Brand Rule)
             item {
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -181,7 +414,7 @@ fun CreatorStudioScreen(
                             color = Color.White
                         )
                         Column {
-                            Text("Estimated Creator Earnings", style = MaterialTheme.typography.bodySmall, color = Color(0xFFA0A5B8))
+                            Text("Lifetime Estimated Earnings", style = MaterialTheme.typography.bodySmall, color = Color(0xFFA0A5B8))
                             Text(
                                 BharatTubeCatalog.formatCurrency(creatorTotalInr, countryCode),
                                 style = MaterialTheme.typography.titleLarge,
@@ -302,53 +535,6 @@ fun CreatorStudioScreen(
                 )
             }
 
-            // Aggregate Audience Breakdown
-            item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF151822)),
-                    border = BorderStroke(1.dp, Color(0xFF252938))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Aggregate Audience Insights", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("Top Countries: India (68%), UAE (11%), USA (9%), UK (5%), Others (7%)", style = MaterialTheme.typography.bodySmall, color = Color(0xFFD0D4E2))
-                        Text("Top Languages: Hindi (46%), English (32%), Tamil (9%), Marathi (7%), Others (6%)", style = MaterialTheme.typography.bodySmall, color = Color(0xFFD0D4E2))
-                        Text("Devices: Mobile Android/iOS (81%), Desktop Web (14%), Smart TV (5%)", style = MaterialTheme.typography.bodySmall, color = Color(0xFFD0D4E2))
-                        Text("Avg Watch Duration: 6m 18s • Audience Retention: 58%", style = MaterialTheme.typography.labelMedium, color = SaffronFlame)
-                    }
-                }
-            }
-
-            // Video-wise Revenue Breakdown
-            item {
-                Text("Video & Shorts Performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-            items(channelVideos, key = { it.id }) { video ->
-                val videoEarnedInr = BharatTubeCatalog.calculateCreatorEarningsInr(
-                    viewCount = video.viewCount,
-                    netRevenueInr = video.netRevenueInr,
-                    creatorSharePct = settings.creatorSharePct,
-                    per1000ViewsPaymentInr = settings.per1000ViewsPaymentInr,
-                    bonusPercent = settings.bonusPercent,
-                    userBoostPct = user?.boostPercent ?: 0
-                )
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF151822),
-                    border = BorderStroke(1.dp, Color(0xFF252938)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("${video.format} • ${video.title}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Text(
-                            "${BharatTubeCatalog.formatCompactCount(video.viewCount)} views • Earned: ₹${String.format("%.2f", videoEarnedInr)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EmeraldVerified
-                        )
-                    }
-                }
-            }
-
             // Payout History (Date, Amount, UPI/Bank, Paid / Pending)
             item {
                 Text("Payout History (${channelPayouts.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
@@ -428,15 +614,15 @@ fun CreatorStudioScreen(
 private fun StudioMetricCard(label: String, value: String, sub: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF151822)),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF11141E)),
         border = BorderStroke(1.dp, Color(0xFF252938))
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = Color(0xFFA0A5B8))
-            Spacer(Modifier.height(4.dp))
-            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
-            Text(sub, style = MaterialTheme.typography.labelSmall, color = SaffronFlame)
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFFA0A5B8), maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+            Text(sub, style = MaterialTheme.typography.labelSmall, color = EmeraldVerified, maxLines = 1)
         }
     }
 }

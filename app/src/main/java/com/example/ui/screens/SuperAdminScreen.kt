@@ -366,17 +366,69 @@ fun SuperAdminScreen(
                             )
                         }
                         item {
-                            OwnerToggleRow(
-                                icon = Icons.Filled.SmartToy,
-                                iconTint = SaffronFlame,
-                                title = "Chhotu AI Control",
-                                subtitle = "Enable in-app Chhotu AI assistant & health monitor",
-                                checked = settings.chhotuAiEnabled,
-                                testTag = "control_chhotu_ai",
-                                onCheckedChange = {
-                                    onUpdateSettings(settings.copy(chhotuAiEnabled = it), "CHHOTU_AI_CONTROL", "Chhotu AI toggled", "${settings.chhotuAiEnabled}", "$it")
+                            OwnerControlCard(borderColor = SaffronFlame.copy(alpha = 0.4f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.SmartToy, contentDescription = null, tint = SaffronFlame)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Chhotu AI Control", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text(
+                                            text = if (settings.chhotuAiEnabled) {
+                                                "Pre-publish video check ON (${if (settings.chhotuAiStrictMode) "Strict Mode" else "Normal Mode"})"
+                                            } else {
+                                                "Chhotu AI Pre-Check is OFF"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFA0A5B8)
+                                        )
+                                    }
+                                    androidx.compose.material3.Switch(
+                                        checked = settings.chhotuAiEnabled,
+                                        onCheckedChange = {
+                                            onUpdateSettings(settings.copy(chhotuAiEnabled = it), "CHHOTU_AI_CONTROL", "Chhotu AI toggled", "${settings.chhotuAiEnabled}", "$it")
+                                        },
+                                        modifier = Modifier.testTag("control_chhotu_ai")
+                                    )
                                 }
-                            )
+                                Text("Moderation Mode (Owner Control)", style = MaterialTheme.typography.labelSmall, color = Color(0xFFA0A5B8))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    val isNormal = !settings.chhotuAiStrictMode
+                                    OutlinedButton(
+                                        onClick = {
+                                            onUpdateSettings(settings.copy(chhotuAiStrictMode = false), "CHHOTU_AI_MODE", "Set Chhotu AI to Normal Mode", "${settings.chhotuAiStrictMode}", "false")
+                                        },
+                                        border = BorderStroke(1.dp, if (isNormal) EmeraldVerified else Color(0xFF2D3244)),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = if (isNormal) EmeraldVerified.copy(alpha = 0.16f) else Color.Transparent
+                                        ),
+                                        modifier = Modifier.weight(1f).testTag("chhotu_mode_normal")
+                                    ) {
+                                        Text("Normal Mode", color = if (isNormal) EmeraldVerified else Color.White, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            onUpdateSettings(settings.copy(chhotuAiStrictMode = true), "CHHOTU_AI_MODE", "Set Chhotu AI to Strict Mode", "${settings.chhotuAiStrictMode}", "true")
+                                        },
+                                        border = BorderStroke(1.dp, if (!isNormal) SaffronFlame else Color(0xFF2D3244)),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = if (!isNormal) SaffronFlame.copy(alpha = 0.18f) else Color.Transparent
+                                        ),
+                                        modifier = Modifier.weight(1f).testTag("chhotu_mode_strict")
+                                    ) {
+                                        Text("Strict Mode", color = if (!isNormal) SaffronFlame else Color.White, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                val checkingCount = videos.count { it.chhotuCheckStatus == "CHECKING" }
+                                val rejectedCount = videos.count { it.chhotuCheckStatus == "REJECTED" }
+                                Text(
+                                    text = "Upload Queue: $checkingCount Checking • $rejectedCount Rejected • ${videos.count { it.chhotuCheckStatus == "APPROVED" }} Approved",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = AmberGold
+                                )
+                            }
                         }
                         item {
                             OwnerToggleRow(

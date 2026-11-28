@@ -115,13 +115,20 @@ class BharatTubeViewModel(
 
     val shortsFeed: StateFlow<List<VideoEntity>> = allVideos
         .combine(preferences) { videos, _ ->
-            videos.filter { it.format == VideoFormat.SHORT.name && it.visibility == VideoVisibility.PUBLIC.name }
+            videos.filter {
+                it.format == VideoFormat.SHORT.name &&
+                    it.visibility == VideoVisibility.PUBLIC.name &&
+                    it.chhotuCheckStatus == "APPROVED"
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val liveStreams: StateFlow<List<VideoEntity>> = allVideos
         .combine(preferences) { videos, _ ->
-            videos.filter { it.isLive || it.format == VideoFormat.LIVE.name }
+            videos.filter {
+                (it.isLive || it.format == VideoFormat.LIVE.name) &&
+                    it.chhotuCheckStatus == "APPROVED"
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
@@ -481,6 +488,12 @@ class BharatTubeViewModel(
         }
     }
 
+    fun recordVideoShare(videoId: String) {
+        viewModelScope.launch {
+            repository.recordVideoShare(videoId)
+        }
+    }
+
     fun savePlaybackPosition(videoId: String, positionMs: Long) {
         viewModelScope.launch { repository.savePlaybackPosition(videoId, positionMs) }
     }
@@ -573,6 +586,7 @@ class BharatTubeViewModel(
         allowComments: Boolean,
         audienceType: String,
         playlistId: String?,
+        existingVideoId: String? = null,
         onSuccess: (VideoEntity) -> Unit
     ) {
         val user = currentUser.value ?: return
@@ -597,10 +611,13 @@ class BharatTubeViewModel(
                 countryCode = preferences.value.preferredCountry,
                 allowComments = allowComments,
                 audienceType = audienceType,
-                playlistId = playlistId
+                playlistId = playlistId,
+                existingVideoId = existingVideoId
             ).onSuccess { video ->
                 _selectedCategory.value = "All"
-                _snackbarMessage.value = if (format == VideoFormat.SHORT) {
+                _snackbarMessage.value = if (platformSettings.value.chhotuAiEnabled) {
+                    "Uploaded! Chhotu AI is checking your video..."
+                } else if (format == VideoFormat.SHORT) {
                     "Short uploaded to BharatTube!"
                 } else {
                     "Video uploaded to top of Home!"
@@ -609,6 +626,12 @@ class BharatTubeViewModel(
             }.onFailure {
                 _snackbarMessage.value = it.message ?: "Upload failed"
             }
+        }
+    }
+
+    fun recheckVideoWithChhotuAi(videoId: String) {
+        viewModelScope.launch {
+            repository.runChhotuUploadCheck(videoId)
         }
     }
 

@@ -52,7 +52,7 @@ import com.example.data.model.WatchHistoryEntity
         ChhotuChatMessageEntity::class,
         ChhotuErrorReportEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class BharatTubeDatabase : RoomDatabase() {
@@ -139,6 +139,21 @@ abstract class BharatTubeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE videos ADD COLUMN shareCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE videos ADD COLUMN watchTimeMinutes INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE videos ADD COLUMN subscribersGained INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE videos ADD COLUMN subscribersLost INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE videos ADD COLUMN chhotuCheckStatus TEXT NOT NULL DEFAULT 'APPROVED'")
+                db.execSQL("ALTER TABLE videos ADD COLUMN chhotuRejectionReason TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE videos ADD COLUMN chhotuCheckSummary TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE videos ADD COLUMN chhotuCheckMode TEXT NOT NULL DEFAULT 'NORMAL'")
+                db.execSQL("ALTER TABLE videos ADD COLUMN chhotuCheckedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN chhotuAiStrictMode INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): BharatTubeDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -146,7 +161,7 @@ abstract class BharatTubeDatabase : RoomDatabase() {
                     BharatTubeDatabase::class.java,
                     "bharattube_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { INSTANCE = it }
             }
@@ -290,6 +305,10 @@ object SeedDataPopulator {
                 captionsText = "Welcome to Aarav Tech Lab! Today we optimize a creator studio for crisp global streaming.",
                 musicAttribution = "Licensed Studio Lo-Fi Beat (CC-BY)",
                 netRevenueInr = 2480.0,
+                shareCount = 812L,
+                watchTimeMinutes = 264_500L,
+                subscribersGained = 540,
+                subscribersLost = 28,
                 createdAt = now - 3_600_000L * 6
             ),
             VideoEntity(
@@ -314,6 +333,10 @@ object SeedDataPopulator {
                 captionsText = "Live from our Mumbai soundstage — blending acoustic strings with analog warmth.",
                 musicAttribution = "Indie Waves Original Master (Cleared)",
                 netRevenueInr = 4120.0,
+                shareCount = 2_190L,
+                watchTimeMinutes = 612_800L,
+                subscribersGained = 1_420,
+                subscribersLost = 62,
                 createdAt = now - 3_600_000L * 18
             ),
             VideoEntity(
@@ -338,6 +361,10 @@ object SeedDataPopulator {
                 captionsText = "As first light hits the valley floor, the Himalayan peaks turn molten gold.",
                 musicAttribution = "Mountain Wind Ambient (Licensed)",
                 netRevenueInr = 1950.0,
+                shareCount = 1_340L,
+                watchTimeMinutes = 486_000L,
+                subscribersGained = 890,
+                subscribersLost = 41,
                 createdAt = now - 3_600_000L * 32
             ),
             VideoEntity(
@@ -455,6 +482,10 @@ object SeedDataPopulator {
                 captionsText = "Quick under-3-minute guide to clean creator audio.",
                 musicAttribution = "Original Licensed Audio",
                 netRevenueInr = 680.0,
+                shareCount = 340L,
+                watchTimeMinutes = 52_400L,
+                subscribersGained = 215,
+                subscribersLost = 12,
                 createdAt = now - 3_600_000L * 2
             )
         )

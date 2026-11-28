@@ -119,6 +119,25 @@ interface BharatTubeDao {
     @Query("UPDATE videos SET visibility = :visibility WHERE id = :videoId")
     suspend fun updateVideoVisibility(videoId: String, visibility: String)
 
+    @Query("UPDATE videos SET shareCount = shareCount + 1 WHERE id = :videoId")
+    suspend fun incrementVideoShare(videoId: String)
+
+    @Query("UPDATE videos SET watchTimeMinutes = watchTimeMinutes + :minutes WHERE id = :videoId")
+    suspend fun addWatchTimeMinutes(videoId: String, minutes: Long)
+
+    @Query("UPDATE videos SET chhotuCheckStatus = :status, chhotuRejectionReason = :reason, chhotuCheckSummary = :summary, chhotuCheckMode = :mode, chhotuCheckedAt = :checkedAt WHERE id = :videoId")
+    suspend fun updateVideoChhotuCheck(
+        videoId: String,
+        status: String,
+        reason: String,
+        summary: String,
+        mode: String,
+        checkedAt: Long
+    )
+
+    @Query("SELECT COUNT(*) FROM comments WHERE videoId = :videoId")
+    suspend fun countCommentsForVideoSync(videoId: String): Int
+
     @Query("DELETE FROM videos WHERE id = :videoId")
     suspend fun deleteVideo(videoId: String)
 
