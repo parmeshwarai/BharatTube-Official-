@@ -16,6 +16,11 @@ data class ChhotuCheckDetail(
     val note: String
 )
 
+data class ChhotuCommentCheckResult(
+    val allowed: Boolean,
+    val reason: String
+)
+
 data class ChhotuUploadCheckResult(
     val approved: Boolean,
     val status: String, // "APPROVED" or "REJECTED"
@@ -211,4 +216,45 @@ object ChhotuUploadModerator {
         ChhotuCheckDetail("QUALITY", "Quality Check", CheckItemStatus.PASSED, "Video playback, metadata & clarity passed"),
         ChhotuCheckDetail("TITLE_THUMB", "Title / Thumbnail Check", CheckItemStatus.PASSED, "Title & thumbnail clear and accurate")
     )
+
+    private val abusiveCommentTokens = listOf(
+        "madarchod", "behenchod", "bhenchod", "chutiya", "randi", "gandu", "bsdk", "mc ", "bc ",
+        "harami", "kamina", "saale", "fuck", "bitch", "asshole", "bastard", "slut", "whore",
+        "porn", "xxx", "nude", "ganda", "ashleel", "otp bypass", "free money", "telegram.me/",
+        "t.me/", "bit.ly/", "whatsapp me for", "scam", "kill yourself", "die ", "hate speech"
+    )
+
+    private val strictSpamCommentTokens = listOf(
+        "http://", "https://", "sub4sub", "sub back", "check my bio", "earn daily", "win cash"
+    )
+
+    fun moderateComment(text: String, strictMode: Boolean = false): ChhotuCommentCheckResult {
+        val clean = text.trim()
+        if (clean.length < 2) {
+            return ChhotuCommentCheckResult(
+                allowed = false,
+                reason = "Chhotu AI: Comment is too short."
+            )
+        }
+        val lower = " ${clean.lowercase()} "
+        val matchedAbuse = abusiveCommentTokens.firstOrNull { token ->
+            if (token.endsWith(" ")) lower.contains(" $token") else lower.contains(token)
+        }
+        if (matchedAbuse != null) {
+            return ChhotuCommentCheckResult(
+                allowed = false,
+                reason = "Chhotu AI blocked this comment for abusive, vulgar, or unsafe language."
+            )
+        }
+        if (strictMode) {
+            val matchedSpam = strictSpamCommentTokens.firstOrNull { lower.contains(it) }
+            if (matchedSpam != null) {
+                return ChhotuCommentCheckResult(
+                    allowed = false,
+                    reason = "Chhotu AI Strict Mode blocked promotional/spam links in comments."
+                )
+            }
+        }
+        return ChhotuCommentCheckResult(allowed = true, reason = "")
+    }
 }

@@ -69,6 +69,7 @@ import com.example.data.model.VideoFormat
 import com.example.ui.components.BharatTubeThumbnail
 import com.example.ui.components.CropTarget
 import com.example.ui.components.ImageCropDialog
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -88,7 +89,8 @@ fun ChannelScreen(
     onOpenVideo: (VideoEntity) -> Unit,
     onToggleWatchLater: (VideoEntity) -> Unit,
     onCreatePost: (ChannelEntity, String) -> Unit,
-    onUpdateChannel: (ChannelEntity) -> Unit = {}
+    onUpdateChannel: (ChannelEntity) -> Unit = {},
+    onReportVideo: (VideoEntity) -> Unit = {}
 ) {
     val channel by observeChannel(channelId).collectAsStateWithLifecycle(initialValue = null)
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -245,7 +247,13 @@ fun ChannelScreen(
                     }
                 }
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(ch.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(ch.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        if (ch.isVerified) {
+                            Spacer(Modifier.width(6.dp))
+                            VerifiedChannelBadge(isVerified = true, size = 18.dp)
+                        }
+                    }
                     Text(
                         "${ch.handle} • ${BharatTubeCatalog.formatCompactCount(ch.subscriberCount)} subscribers",
                         style = MaterialTheme.typography.bodySmall,
@@ -290,6 +298,8 @@ fun ChannelScreen(
                         onClick = { onOpenVideo(v) },
                         onChannelClick = {},
                         onToggleWatchLater = { onToggleWatchLater(v) },
+                        isChannelVerified = ch.isVerified,
+                        onReportClick = { onReportVideo(v) },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
@@ -299,6 +309,8 @@ fun ChannelScreen(
                         onClick = { onOpenVideo(s) },
                         onChannelClick = {},
                         onToggleWatchLater = { onToggleWatchLater(s) },
+                        isChannelVerified = ch.isVerified,
+                        onReportClick = { onReportVideo(s) },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }

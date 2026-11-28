@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -10,9 +11,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,14 +23,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +60,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ads.AdMobInterstitialController
 import com.example.data.model.VideoEntity
+import com.example.data.model.VideoFormat
 import com.example.ui.components.BharatTab
 import com.example.ui.components.BharatTubeBottomBar
 import com.example.ui.components.BharatTubeLogoMark
@@ -60,6 +69,7 @@ import com.example.ui.components.CreateOptionsBottomSheet
 import com.example.ui.components.SwitchOrCreateAccountDialog
 import com.example.ui.screens.AboutChannelScreen
 import com.example.ui.screens.AdvertiserScreen
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.CameraCaptureMode
 import com.example.ui.screens.CameraCaptureScreen
 import com.example.ui.screens.ChannelScreen
@@ -73,6 +83,7 @@ import com.example.ui.screens.EditChannelScreen
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.LiveFeedScreen
 import com.example.ui.screens.LiveStreamScreen
 import com.example.ui.screens.NotificationsScreen
 import com.example.ui.screens.ProfileMenuScreen
@@ -155,6 +166,7 @@ fun BharatTubeApp(
     val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val playlistRefs by viewModel.playlistRefs.collectAsStateWithLifecycle()
+    val allComments by viewModel.allComments.collectAsStateWithLifecycle()
     val watchHistory by viewModel.watchHistory.collectAsStateWithLifecycle()
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
     val adCampaigns by viewModel.adCampaigns.collectAsStateWithLifecycle()
@@ -192,21 +204,35 @@ fun BharatTubeApp(
         }
     }
 
+    val context = LocalContext.current
     var showCreateSheet by remember { mutableStateOf(false) }
     var showMaintenanceAccountDialog by remember { mutableStateOf(false) }
+    var reportTargetVideo by remember { mutableStateOf<VideoEntity?>(null) }
+    val shareVideoIntent: (VideoEntity) -> Unit = { video ->
+        viewModel.recordVideoShare(video.id)
+        val shareText = "Watch '${video.title}' by ${video.channelName} on BharatTube!\nhttps://bharattube.in/watch/${video.id}"
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, video.title)
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share via BharatTube"))
+    }
     val boostedUserIds = remember(allUsers) { allUsers.associate { it.uid to it.boostPercent } }
     val isAppBlockedForNonOwner = (!settings.appEnabled || settings.maintenanceMode) && currentUser?.isAdmin != true
 
     val topLevelRoutes = setOf(
         BharatTab.HOME.route,
         BharatTab.SHORTS.route,
-        BharatTab.SUBSCRIPTIONS.route,
+        BharatTab.LIVE.route,
         BharatTab.PROFILE.route
     )
     val isTopLevel = currentRoute in topLevelRoutes || currentRoute?.startsWith("shorts") == true
     val showTopBar = currentRoute in setOf(
         BharatTab.HOME.route,
-        BharatTab.SUBSCRIPTIONS.route
+        BharatTab.LIVE.route,
+        "subscriptions",
+        "explore"
     )
 
     Scaffold(
@@ -264,11 +290,28 @@ fun BharatTubeApp(
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleWatchLater = viewModel::toggleWatchLater,
                         onOpenCreateChannel = { navController.navigate("create_channel") },
-                        onOpenSubscriptionsFeed = { navController.navigate(BharatTab.SUBSCRIPTIONS.route) }
+                        onOpenSubscriptionsFeed = { navController.navigate("subscriptions") },
+                        onOpenTrending = { navController.navigate("explore") },
+                        onReportVideo = { reportTargetVideo = it },
+                        onShareVideo = shareVideoIntent
                     )
                 }
 
-                composable(BharatTab.SUBSCRIPTIONS.route) {
+                composable(BharatTab.LIVE.route) {
+                    LiveFeedScreen(
+                        liveStreams = liveStreams,
+                        allVideos = allVideos,
+                        channels = allChannels,
+                        settings = settings,
+                        onOpenLive = openVideoWithAd,
+                        onOpenChannel = { chId -> navController.navigate("channel/$chId") },
+                        onToggleWatchLater = viewModel::toggleWatchLater,
+                        onReportVideo = { reportTargetVideo = it },
+                        onStartLive = { navController.navigate("camera?mode=LIVE") }
+                    )
+                }
+
+                composable("subscriptions") {
                     SubscriptionsScreen(
                         channels = allChannels,
                         videos = allVideos,
@@ -276,6 +319,36 @@ fun BharatTubeApp(
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleSubscribe = viewModel::toggleSubscribe,
                         onToggleWatchLater = viewModel::toggleWatchLater
+                    )
+                }
+
+                composable("auth") {
+                    AuthScreen(
+                        allUsers = allUsers,
+                        googleLoginEnabled = settings.googleLoginEnabled,
+                        onBack = { navController.popBackStack() },
+                        onGoogleSignIn = { name, email ->
+                            viewModel.signInWithGoogle(name, email) { navController.popBackStack() }
+                        },
+                        onRequestOtp = viewModel::requestAuthOtp,
+                        onVerifyOtpLogin = { phone, otp, displayName ->
+                            viewModel.verifyPhoneOtpLogin(phone, otp, displayName) { navController.popBackStack() }
+                        },
+                        onEmailLogin = { email, password ->
+                            viewModel.loginWithEmail(email, password) { navController.popBackStack() }
+                        },
+                        onEmailRegister = { name, email, password ->
+                            viewModel.registerWithEmail(name, email, password) { navController.popBackStack() }
+                        },
+                        onResetPassword = { identifier, otp, newPassword ->
+                            viewModel.resetPasswordWithOtp(identifier, otp, newPassword) { navController.popBackStack() }
+                        },
+                        onSwitchExistingUser = { uid ->
+                            viewModel.switchUser(uid)
+                            navController.popBackStack()
+                        },
+                        onOpenTerms = { navController.navigate("support?tab=2") },
+                        onOpenPrivacy = { navController.navigate("support?tab=3") }
                     )
                 }
 
@@ -417,7 +490,9 @@ fun BharatTubeApp(
                         onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleSubscribe = viewModel::toggleSubscribe,
-                        onToggleWatchLater = viewModel::toggleWatchLater
+                        onToggleWatchLater = viewModel::toggleWatchLater,
+                        onReportVideo = { reportTargetVideo = it },
+                        onShareVideo = shareVideoIntent
                     )
                 }
 
@@ -444,7 +519,12 @@ fun BharatTubeApp(
                         onToggleLike = viewModel::toggleLike,
                         onToggleSubscribe = viewModel::toggleSubscribe,
                         onAddComment = viewModel::addComment,
-                        onOpenChannel = { chId -> navController.navigate("channel/$chId") }
+                        onOpenChannel = { chId -> navController.navigate("channel/$chId") },
+                        currentUser = currentUser,
+                        onPinComment = viewModel::togglePinComment,
+                        onHideComment = viewModel::toggleHideComment,
+                        onDeleteComment = viewModel::deleteComment,
+                        onSubmitReport = viewModel::submitReport
                     )
                 }
 
@@ -463,7 +543,12 @@ fun BharatTubeApp(
                         onToggleLike = viewModel::toggleLike,
                         onToggleSubscribe = viewModel::toggleSubscribe,
                         onAddComment = viewModel::addComment,
-                        onOpenChannel = { chId -> navController.navigate("channel/$chId") }
+                        onOpenChannel = { chId -> navController.navigate("channel/$chId") },
+                        currentUser = currentUser,
+                        onPinComment = viewModel::togglePinComment,
+                        onHideComment = viewModel::toggleHideComment,
+                        onDeleteComment = viewModel::deleteComment,
+                        onSubmitReport = viewModel::submitReport
                     )
                 }
 
@@ -488,11 +573,13 @@ fun BharatTubeApp(
                         onOpenChhotuAi = { navController.navigate("chhotu_ai") },
                         onOpenVideo = openVideoWithAd,
                         onOpenChhotuCheck = { v -> navController.navigate("upload_check/${v.id}") },
-                        onOpenPlaylistsLibrary = { navController.navigate("library?tab=3") },
+                        onOpenPlaylistsLibrary = { navController.navigate("library?tab=4") },
                         onOpenUpload = { navController.navigate("camera?mode=VIDEO") },
                         onSwitchUser = viewModel::switchUser,
                         onCreateLocalAccount = viewModel::createLocalAccount,
-                        onSignInBack = viewModel::signInBack
+                        onSignInBack = viewModel::signInBack,
+                        onOpenAuth = { navController.navigate("auth") },
+                        onOpenStudio = { navController.navigate("studio") }
                     )
                 }
 
@@ -527,7 +614,9 @@ fun BharatTubeApp(
                         onOpenChhotuAdmin = { navController.navigate("chhotu_admin") },
                         onSwitchUser = viewModel::switchUser,
                         onCreateLocalAccount = viewModel::createLocalAccount,
-                        onSignOut = viewModel::signOut
+                        onSignOut = viewModel::signOut,
+                        onOpenLikedVideos = { navController.navigate("library?tab=3") },
+                        onOpenAuth = { navController.navigate("auth") }
                     )
                 }
 
@@ -632,7 +721,10 @@ fun BharatTubeApp(
                         onToggleHistoryPaused = viewModel::toggleHistoryPaused,
                         onClearWatchHistory = viewModel::clearWatchHistory,
                         onClearSearchHistory = viewModel::clearSearchHistory,
-                        onSignOut = viewModel::signOut
+                        onSignOut = viewModel::signOut,
+                        onOpenAuth = { navController.navigate("auth") },
+                        onOpenTerms = { navController.navigate("support?tab=2") },
+                        onOpenPrivacy = { navController.navigate("support?tab=3") }
                     )
                 }
 
@@ -641,6 +733,9 @@ fun BharatTubeApp(
                     arguments = listOf(navArgument("videoId") { type = NavType.StringType })
                 ) { entry ->
                     val videoId = entry.arguments?.getString("videoId") ?: ""
+                    val downloadedIds = remember(prefs.downloadedVideoIdsCsv) {
+                        prefs.downloadedVideoIdsCsv.split(",").filter { it.isNotBlank() }.toSet()
+                    }
                     VideoPlayerScreen(
                         videoId = videoId,
                         observeVideo = viewModel::observeVideo,
@@ -665,7 +760,14 @@ fun BharatTubeApp(
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onSubmitReport = viewModel::submitReport,
                         onEnterPip = onEnterPip,
-                        onShareVideo = viewModel::recordVideoShare
+                        onShareVideo = viewModel::recordVideoShare,
+                        currentUser = currentUser,
+                        isDownloaded = videoId in downloadedIds,
+                        onToggleDislike = viewModel::toggleDislike,
+                        onToggleDownload = viewModel::toggleDownloadVideo,
+                        onPinComment = viewModel::togglePinComment,
+                        onHideComment = viewModel::toggleHideComment,
+                        onDeleteComment = viewModel::deleteComment
                     )
                 }
 
@@ -702,7 +804,8 @@ fun BharatTubeApp(
                         onOpenVideo = openVideoWithAd,
                         onToggleWatchLater = viewModel::toggleWatchLater,
                         onCreatePost = viewModel::createCommunityPost,
-                        onUpdateChannel = viewModel::updateChannel
+                        onUpdateChannel = viewModel::updateChannel,
+                        onReportVideo = { reportTargetVideo = it }
                     )
                 }
 
@@ -723,6 +826,7 @@ fun BharatTubeApp(
                         myChannels = myChannels,
                         allChannels = allChannels,
                         allVideos = allVideos,
+                        allComments = allComments,
                         payouts = payouts,
                         settings = settings,
                         countryCode = prefs.preferredCountry,
@@ -732,7 +836,16 @@ fun BharatTubeApp(
                         onOpenVideoAnalytics = { v -> navController.navigate("video_analytics/${v.id}") },
                         onOpenChhotuCheck = { v -> navController.navigate("upload_check/${v.id}") },
                         onInitiatePayout = viewModel::initiatePayout,
-                        onSavePayoutMethod = viewModel::updatePayoutMethodDetails
+                        onSavePayoutMethod = viewModel::updatePayoutMethodDetails,
+                        onUploadVideo = { navController.navigate("camera?mode=VIDEO") },
+                        onCreateShort = { navController.navigate("camera?mode=SHORT") },
+                        onGoLive = { navController.navigate("camera?mode=LIVE") },
+                        onUpdateVideo = viewModel::updateVideoMetadata,
+                        onDeleteVideo = viewModel::deleteVideo,
+                        onAddCommentReply = viewModel::addComment,
+                        onPinComment = viewModel::togglePinComment,
+                        onHideComment = viewModel::toggleHideComment,
+                        onDeleteComment = viewModel::deleteComment
                     )
                 }
 
@@ -773,7 +886,9 @@ fun BharatTubeApp(
                         onBoostUser = viewModel::boostUserWork,
                         onTriggerAutoPayoutSweep = viewModel::triggerAutoPayoutSweep,
                         onUpdatePayoutStatus = viewModel::updatePayoutStatus,
-                        onResolveReport = viewModel::resolveReport
+                        onResolveReport = viewModel::resolveReport,
+                        onSetChannelVerified = viewModel::setChannelVerified,
+                        onSetChannelMonetization = viewModel::setChannelMonetization
                     )
                 }
 
@@ -838,7 +953,9 @@ fun BharatTubeApp(
                         onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
                         onToggleWatchLater = viewModel::toggleWatchLater,
-                        onVoiceUnavailable = { viewModel.showMessage("Voice search requires Google Speech Services on this device.") }
+                        onVoiceUnavailable = { viewModel.showMessage("Voice search requires Google Speech Services on this device.") },
+                        onReportVideo = { reportTargetVideo = it },
+                        onShareVideo = shareVideoIntent
                     )
                 }
 
@@ -882,13 +999,21 @@ fun BharatTubeApp(
                         onDeletePlaylist = viewModel::deletePlaylist,
                         onOpenVideo = openVideoWithAd,
                         onOpenChannel = { chId -> navController.navigate("channel/$chId") },
-                        onToggleWatchLater = viewModel::toggleWatchLater
+                        onToggleWatchLater = viewModel::toggleWatchLater,
+                        onRemoveFromPlaylist = viewModel::removeVideoFromPlaylist,
+                        onReportVideo = { reportTargetVideo = it },
+                        onShareVideo = shareVideoIntent
                     )
                 }
 
-                composable("support") {
+                composable(
+                    route = "support?tab={tab}",
+                    arguments = listOf(navArgument("tab") { type = NavType.IntType; defaultValue = 0 })
+                ) { entry ->
+                    val tab = entry.arguments?.getInt("tab") ?: 0
                     SupportScreen(
                         tickets = supportTickets,
+                        initialTab = tab,
                         onBack = { navController.popBackStack() },
                         onSubmitTicket = viewModel::submitSupportTicket
                     )
@@ -981,6 +1106,75 @@ fun BharatTubeApp(
             onCreatePost = {
                 showCreateSheet = false
                 navController.navigate("create_post")
+            }
+        )
+    }
+
+    reportTargetVideo?.let { target ->
+        var selectedReason by remember(target.id) { mutableStateOf("Spam or Misleading") }
+        var extraDetails by remember(target.id) { mutableStateOf("") }
+        val reasons = listOf(
+            "Spam or Misleading",
+            "Abusive / Harassment",
+            "Copyright Violation",
+            "Violence or Unsafe",
+            "Misinformation"
+        )
+        AlertDialog(
+            onDismissRequest = { reportTargetVideo = null },
+            title = { Text("Report Content") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = target.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    reasons.forEach { reason ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedReason = reason }
+                        ) {
+                            RadioButton(
+                                selected = selectedReason == reason,
+                                onClick = { selectedReason = reason }
+                            )
+                            Text(reason, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = extraDetails,
+                        onValueChange = { extraDetails = it },
+                        label = { Text("Details (optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val targetType = when {
+                            target.isLive -> "LIVE_STREAM"
+                            target.format == VideoFormat.SHORT.name -> "SHORT"
+                            else -> "VIDEO"
+                        }
+                        viewModel.submitReport(
+                            targetType,
+                            target.id,
+                            target.title,
+                            selectedReason,
+                            extraDetails.ifBlank { "Reported from BharatTube feed" }
+                        )
+                        reportTargetVideo = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame)
+                ) { Text("Submit Report") }
+            },
+            dismissButton = {
+                TextButton(onClick = { reportTargetVideo = null }) { Text("Cancel") }
             }
         )
     }

@@ -296,7 +296,7 @@ fun ImageCropDialog(
                                         style = Stroke(width = 2.dp.toPx())
                                     )
                                 } else {
-                                    // Rule-of-thirds guides for wide YouTube-style banner
+                                    // Rule-of-thirds guides for wide BharatTube channel banner
                                     val thirdW = size.width / 3f
                                     val thirdH = size.height / 3f
                                     val guideColor = Color.White.copy(alpha = 0.35f)

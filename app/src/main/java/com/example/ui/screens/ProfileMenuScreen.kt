@@ -35,8 +35,10 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.WatchLater
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -100,7 +102,9 @@ fun ProfileMenuScreen(
     onOpenChhotuAdmin: () -> Unit,
     onSwitchUser: (String) -> Unit,
     onCreateLocalAccount: (String, String, String, String, String, Boolean) -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onOpenLikedVideos: () -> Unit = {},
+    onOpenAuth: () -> Unit = {}
 ) {
     var showSwitchAccountDialog by remember { mutableStateOf(false) }
     var showSignOutConfirm by remember { mutableStateOf(false) }
@@ -266,6 +270,21 @@ fun ProfileMenuScreen(
                         )
                         MenuDivider()
                         ProfileMenuRow(
+                            icon = Icons.Filled.ThumbUp,
+                            label = "Liked Videos",
+                            tag = "menu_liked_videos",
+                            onClick = onOpenLikedVideos
+                        )
+                        MenuDivider()
+                        ProfileMenuRow(
+                            icon = Icons.Filled.VerifiedUser,
+                            label = "Login / Sign Up (Google, OTP, Email)",
+                            tint = SaffronFlame,
+                            tag = "menu_open_auth",
+                            onClick = onOpenAuth
+                        )
+                        MenuDivider()
+                        ProfileMenuRow(
                             icon = Icons.Filled.Settings,
                             label = "Settings",
                             tag = "menu_settings",
@@ -287,7 +306,7 @@ fun ProfileMenuScreen(
                             tag = "menu_sign_out",
                             onClick = {
                                 if (prefs.isSignedOut) {
-                                    showSwitchAccountDialog = true
+                                    onOpenAuth()
                                 } else {
                                     showSignOutConfirm = true
                                 }
@@ -315,7 +334,7 @@ fun ProfileMenuScreen(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         ProfileMenuRow(
                             icon = Icons.Filled.AccountBalanceWallet,
-                            label = "Creator Studio",
+                            label = "BharatTube Studio",
                             tint = SaffronFlame,
                             tag = "menu_creator_studio",
                             onClick = onOpenCreatorStudio

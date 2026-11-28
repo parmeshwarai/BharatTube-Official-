@@ -25,9 +25,16 @@ import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,8 +64,10 @@ import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.PlatformSettingsEntity
+import com.example.data.model.UserProfileEntity
 import com.example.data.model.VideoEntity
 import com.example.ui.components.BharatTubeVideoPlayer
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
 import kotlinx.coroutines.flow.Flow
@@ -75,7 +84,12 @@ fun ShortsScreen(
     onToggleLike: (VideoEntity) -> Unit,
     onToggleSubscribe: (ChannelEntity) -> Unit,
     onAddComment: (String, String) -> Unit,
-    onOpenChannel: (String) -> Unit
+    onOpenChannel: (String) -> Unit,
+    currentUser: UserProfileEntity? = null,
+    onPinComment: (VideoEntity, CommentEntity) -> Unit = { _, _ -> },
+    onHideComment: (VideoEntity, CommentEntity) -> Unit = { _, _ -> },
+    onDeleteComment: (VideoEntity, CommentEntity) -> Unit = { _, _ -> },
+    onSubmitReport: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> }
 ) {
     if (!settings.shortsEnabled) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -92,8 +106,9 @@ fun ShortsScreen(
 
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = initialIndex.coerceIn(0, shorts.lastIndex)) { shorts.size }
-    var commentSheetVideoId by remember { mutableStateOf<String?>(null) }
+    var commentSheetVideo by remember { mutableStateOf<VideoEntity?>(null) }
     var analyticsShort by remember { mutableStateOf<VideoEntity?>(null) }
+    var reportShort by remember { mutableStateOf<VideoEntity?>(null) }
 
     VerticalPager(
         state = pagerState,
@@ -158,7 +173,7 @@ fun ShortsScreen(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     IconButton(
-                        onClick = { commentSheetVideoId = short.id },
+                        onClick = { commentSheetVideo = short },
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
@@ -198,6 +213,17 @@ fun ShortsScreen(
                 ) {
                     Icon(Icons.Filled.Analytics, contentDescription = "Shorts Analytics", tint = Color.White)
                 }
+
+                IconButton(
+                    onClick = { reportShort = short },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .testTag("short_report_${short.id}")
+                ) {
+                    Icon(Icons.Filled.Flag, contentDescription = "Report Short", tint = Color.White)
+                }
             }
 
             // Bottom Creator Info & Caption Overlay
@@ -214,6 +240,10 @@ fun ShortsScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable { onOpenChannel(short.channelId) }
                     )
+                    if (channel?.isVerified == true) {
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedChannelBadge(isVerified = true, size = 14.dp)
+                    }
                     Spacer(Modifier.width(10.dp))
                     if (channel != null) {
                         Surface(
@@ -243,24 +273,34 @@ fun ShortsScreen(
         }
     }
 
-    // Comments Sheet
-    commentSheetVideoId?.let { videoId ->
-        val comments by observeComments(videoId).collectAsStateWithLifecycle(initialValue = emptyList())
+    // Comments Sheet with Chhotu AI Guard + Owner/Creator Pin/Hide/Delete
+    commentSheetVideo?.let { targetVideo ->
+        val comments by observeComments(targetVideo.id).collectAsStateWithLifecycle(initialValue = emptyList())
+        val ch = channels.firstOrNull { it.id == targetVideo.channelId }
+        val canModerate = currentUser != null && (currentUser.isAdmin || ch?.ownerUserId == currentUser.uid)
+        val visibleComments = if (canModerate) comments else comments.filter { !it.isHidden }
         var draft by remember { mutableStateOf("") }
-        ModalBottomSheet(onDismissRequest = { commentSheetVideoId = null }) {
+        ModalBottomSheet(onDismissRequest = { commentSheetVideo = null }) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Comments (${comments.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Comments (${visibleComments.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Chhotu AI Guard Active", style = MaterialTheme.typography.labelSmall, color = SaffronFlame)
+                }
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = draft,
                         onValueChange = { draft = it },
-                        placeholder = { Text("Add a comment...") },
+                        placeholder = { Text("Add a respectful comment...") },
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = {
                         if (draft.isNotBlank()) {
-                            onAddComment(videoId, draft)
+                            onAddComment(targetVideo.id, draft)
                             draft = ""
                         }
                     }) {
@@ -269,10 +309,62 @@ fun ShortsScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 LazyColumn(modifier = Modifier.height(260.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(comments, key = { it.id }) { comment ->
-                        Column {
-                            Text(comment.authorName, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                            Text(comment.text, style = MaterialTheme.typography.bodyMedium)
+                    items(visibleComments, key = { it.id }) { comment ->
+                        val canDelete = canModerate || (currentUser != null && comment.authorUserId == currentUser.uid)
+                        var showMenu by remember { mutableStateOf(false) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(comment.authorName, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                                    if (comment.isPinned) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(Icons.Filled.PushPin, contentDescription = "Pinned", tint = SaffronFlame, modifier = Modifier.size(12.dp))
+                                        Text("Pinned", color = SaffronFlame, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    if (comment.isHidden) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Hidden", color = LotusCoral, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                                Text(comment.text, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            if (canModerate || canDelete) {
+                                Box {
+                                    IconButton(onClick = { showMenu = true }) {
+                                        Icon(Icons.Filled.MoreVert, contentDescription = "Moderate comment")
+                                    }
+                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                        if (canModerate) {
+                                            DropdownMenuItem(
+                                                text = { Text(if (comment.isPinned) "Unpin" else "Pin") },
+                                                onClick = {
+                                                    showMenu = false
+                                                    onPinComment(targetVideo, comment)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(if (comment.isHidden) "Unhide" else "Hide") },
+                                                onClick = {
+                                                    showMenu = false
+                                                    onHideComment(targetVideo, comment)
+                                                }
+                                            )
+                                        }
+                                        if (canDelete) {
+                                            DropdownMenuItem(
+                                                text = { Text("Delete", color = LotusCoral) },
+                                                onClick = {
+                                                    showMenu = false
+                                                    onDeleteComment(targetVideo, comment)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -294,5 +386,44 @@ fun ShortsScreen(
                 }
             }
         }
+    }
+
+    // Report Short Dialog
+    reportShort?.let { target ->
+        var selectedReason by remember { mutableStateOf("Harassment / Safety") }
+        var details by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { reportShort = null },
+            title = { Text("Report Short") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Copyright Infringement", "Misleading or Spam", "Harassment / Safety", "Age-Inappropriate Content").forEach { reason ->
+                        Text(
+                            text = if (selectedReason == reason) "● $reason" else "○ $reason",
+                            color = if (selectedReason == reason) SaffronFlame else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedReason = reason }
+                                .padding(vertical = 4.dp)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = details,
+                        onValueChange = { details = it },
+                        label = { Text("Additional details") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onSubmitReport("SHORT", target.id, target.title, selectedReason, details)
+                    reportShort = null
+                }) { Text("Submit Report") }
+            },
+            dismissButton = {
+                TextButton(onClick = { reportShort = null }) { Text("Cancel") }
+            }
+        )
     }
 }

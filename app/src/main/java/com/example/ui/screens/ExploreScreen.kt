@@ -48,6 +48,8 @@ import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoVisibility
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -66,11 +68,14 @@ fun ExploreScreen(
     onOpenVideo: (VideoEntity) -> Unit,
     onOpenChannel: (String) -> Unit,
     onToggleSubscribe: (ChannelEntity) -> Unit,
-    onToggleWatchLater: (VideoEntity) -> Unit
+    onToggleWatchLater: (VideoEntity) -> Unit,
+    onReportVideo: (VideoEntity) -> Unit = {},
+    onShareVideo: (VideoEntity) -> Unit = {}
 ) {
     var filterCountry by remember(currentCountry) { mutableStateOf("ALL") }
     var filterLang by remember(currentLanguage) { mutableStateOf("ALL") }
     val channelOwnerMap = remember(channels) { channels.associate { it.id to it.ownerUserId } }
+    val verifiedChannelIds = remember(channels) { channels.filter { it.isVerified }.map { it.id }.toSet() }
 
     val filteredTrending = remember(videos, filterCountry, filterLang, boostedUserIds, trendingBoostEnabled, workBoostPercent, channelOwnerMap) {
         videos.filter { video ->
@@ -96,10 +101,10 @@ fun ExploreScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = SaffronFlame)
                     Spacer(Modifier.width(8.dp))
-                    Text("Global & Regional Explore", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Trending on BharatTube", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 }
                 Text(
-                    "Discover country-wise and language-wise trending creators across 20+ languages.",
+                    "Discover top trending videos, live streams & regional creators across 20+ languages.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -218,7 +223,13 @@ fun ExploreScreen(
                                     Text(channel.name.take(1), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(Modifier.height(8.dp))
-                                Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                    if (channel.isVerified) {
+                                        Spacer(Modifier.width(4.dp))
+                                        VerifiedChannelBadge(isVerified = true, size = 14.dp)
+                                    }
+                                }
                                 Text(
                                     "${BharatTubeCatalog.formatCompactCount(channel.subscriberCount)} subscribers",
                                     style = MaterialTheme.typography.bodySmall,
@@ -254,14 +265,33 @@ fun ExploreScreen(
             )
         }
 
-        items(filteredTrending, key = { it.id }) { video ->
-            VideoFeedCard(
-                video = video,
-                onClick = { onOpenVideo(video) },
-                onChannelClick = { onOpenChannel(video.channelId) },
-                onToggleWatchLater = { onToggleWatchLater(video) },
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+        itemsIndexed(filteredTrending, key = { _, v -> v.id }) { idx, video ->
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                if (idx < 5) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = SaffronFlame.copy(alpha = 0.16f),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Text(
+                            text = "#${idx + 1} Trending",
+                            color = SaffronFlame,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+                VideoFeedCard(
+                    video = video,
+                    onClick = { onOpenVideo(video) },
+                    onChannelClick = { onOpenChannel(video.channelId) },
+                    onToggleWatchLater = { onToggleWatchLater(video) },
+                    isChannelVerified = video.channelId in verifiedChannelIds,
+                    onReportClick = { onReportVideo(video) },
+                    onShareClick = { onShareVideo(video) }
+                )
+            }
         }
     }
 }

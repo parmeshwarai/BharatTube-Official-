@@ -52,7 +52,7 @@ import com.example.data.model.WatchHistoryEntity
         ChhotuChatMessageEntity::class,
         ChhotuErrorReportEntity::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = false
 )
 abstract class BharatTubeDatabase : RoomDatabase() {
@@ -154,6 +154,23 @@ abstract class BharatTubeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE users ADD COLUMN passwordHash TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE channels ADD COLUMN isVerified INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE videos ADD COLUMN dislikeCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE videos ADD COLUMN isDisliked INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE comments ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE comments ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE videos ADD COLUMN scheduledAtEpochMs INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): BharatTubeDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -161,7 +178,15 @@ abstract class BharatTubeDatabase : RoomDatabase() {
                     BharatTubeDatabase::class.java,
                     "bharattube_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
+                    )
                     .build()
                     .also { INSTANCE = it }
             }
@@ -243,6 +268,7 @@ object SeedDataPopulator {
                 isSubscribedByMe = false,
                 notificationsEnabled = true,
                 monetizationEnabled = true,
+                isVerified = true,
                 createdAt = now - 86_400_000L * 28
             )
         )
@@ -260,6 +286,7 @@ object SeedDataPopulator {
                 isSubscribedByMe = true,
                 notificationsEnabled = true,
                 monetizationEnabled = true,
+                isVerified = true,
                 createdAt = now - 86_400_000L * 19
             )
         )

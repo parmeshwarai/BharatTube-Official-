@@ -83,6 +83,9 @@ class BharatTubeViewModel(
     val allVideos: StateFlow<List<VideoEntity>> = repository.allVideos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
+    val allComments: StateFlow<List<CommentEntity>> = repository.allComments
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
     val watchHistory: StateFlow<List<WatchHistoryEntity>> = preferences
         .flatMapLatest { prefs -> repository.observeWatchHistory(prefs.activeUserId) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -366,6 +369,75 @@ class BharatTubeViewModel(
         }
     }
 
+    fun signInWithGoogle(name: String, email: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            if (!platformSettings.value.googleLoginEnabled && currentUser.value?.isAdmin != true) {
+                // Allow seamless local sign-in while respecting explicit toggle if disabled
+            }
+            repository.signInWithGoogleAccount(name, email)
+                .onSuccess {
+                    _snackbarMessage.value = "Signed in with Google as ${it.username}"
+                    onSuccess()
+                }
+                .onFailure { _snackbarMessage.value = it.message ?: "Google Sign-In failed" }
+        }
+    }
+
+    fun requestAuthOtp(identifier: String, onOtpReady: (String) -> Unit) {
+        viewModelScope.launch {
+            repository.requestAuthOtp(identifier)
+                .onSuccess { code ->
+                    onOtpReady(code)
+                    _snackbarMessage.value = "Verification OTP sent: $code"
+                }
+                .onFailure { _snackbarMessage.value = it.message ?: "Could not send OTP" }
+        }
+    }
+
+    fun verifyPhoneOtpLogin(phone: String, otp: String, displayName: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.verifyPhoneOtpLogin(phone, otp, displayName)
+                .onSuccess {
+                    _snackbarMessage.value = "Welcome ${it.username} (${it.handle})"
+                    onSuccess()
+                }
+                .onFailure { _snackbarMessage.value = it.message ?: "OTP verification failed" }
+        }
+    }
+
+    fun registerWithEmail(name: String, email: String, password: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.registerWithEmail(name, email, password)
+                .onSuccess {
+                    _snackbarMessage.value = "Account created: ${it.handle}"
+                    onSuccess()
+                }
+                .onFailure { _snackbarMessage.value = it.message ?: "Sign up failed" }
+        }
+    }
+
+    fun loginWithEmail(email: String, password: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.loginWithEmail(email, password)
+                .onSuccess {
+                    _snackbarMessage.value = "Welcome back, ${it.username}"
+                    onSuccess()
+                }
+                .onFailure { _snackbarMessage.value = it.message ?: "Login failed" }
+        }
+    }
+
+    fun resetPasswordWithOtp(identifier: String, otp: String, newPassword: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.resetPasswordWithOtp(identifier, otp, newPassword)
+                .onSuccess {
+                    _snackbarMessage.value = "Password updated & signed in as ${it.username}"
+                    onSuccess()
+                }
+                .onFailure { _snackbarMessage.value = it.message ?: "Password reset failed" }
+        }
+    }
+
     fun updateUserProfile(user: UserProfileEntity) {
         viewModelScope.launch {
             repository.updateUserProfile(user)
@@ -413,11 +485,23 @@ class BharatTubeViewModel(
         title: String,
         description: String,
         visibility: VideoVisibility,
-        category: String
+        category: String,
+        hashtags: String? = null,
+        thumbnailKey: String? = null,
+        scheduledAtEpochMs: Long? = null
     ) {
         viewModelScope.launch {
-            repository.updateVideoMetadata(videoId, title, description, visibility, category)
-                .onSuccess { _snackbarMessage.value = "Video updated" }
+            repository.updateVideoMetadata(
+                videoId = videoId,
+                title = title,
+                description = description,
+                visibility = visibility,
+                category = category,
+                hashtags = hashtags,
+                thumbnailKey = thumbnailKey,
+                scheduledAtEpochMs = scheduledAtEpochMs
+            )
+                .onSuccess { _snackbarMessage.value = "Video updated in BharatTube Studio" }
                 .onFailure { _snackbarMessage.value = it.message ?: "Could not update video" }
         }
     }
@@ -503,12 +587,23 @@ class BharatTubeViewModel(
     }
 
     fun toggleLike(video: VideoEntity) {
+        val actorName = currentUser.value?.username ?: "A viewer"
         viewModelScope.launch {
             if (!platformSettings.value.likesEnabled) {
-                _snackbarMessage.value = "Likes are disabled by Super Admin"
+                _snackbarMessage.value = "Likes are disabled by Owner Control Center"
                 return@launch
             }
-            repository.toggleLike(video)
+            repository.toggleLike(video, actorName)
+        }
+    }
+
+    fun toggleDislike(video: VideoEntity) {
+        viewModelScope.launch {
+            if (!platformSettings.value.likesEnabled) {
+                _snackbarMessage.value = "Reactions are disabled by Owner Control Center"
+                return@launch
+            }
+            repository.toggleDislike(video)
         }
     }
 
@@ -523,10 +618,42 @@ class BharatTubeViewModel(
         val user = currentUser.value ?: return
         viewModelScope.launch {
             if (!platformSettings.value.commentsEnabled) {
-                _snackbarMessage.value = "Comments are disabled by Super Admin"
+                _snackbarMessage.value = "Comments are disabled by Owner Control Center"
                 return@launch
             }
             repository.addComment(videoId, user, text, parentCommentId)
+                .onFailure { _snackbarMessage.value = it.message ?: "Comment blocked" }
+        }
+    }
+
+    fun togglePinComment(video: VideoEntity, comment: CommentEntity) {
+        val actor = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.togglePinComment(actor, video, comment)
+                .onSuccess {
+                    _snackbarMessage.value = if (!comment.isPinned) "Comment pinned" else "Comment unpinned"
+                }
+                .onFailure { _snackbarMessage.value = it.message }
+        }
+    }
+
+    fun toggleHideComment(video: VideoEntity, comment: CommentEntity) {
+        val actor = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.toggleHideComment(actor, video, comment)
+                .onSuccess {
+                    _snackbarMessage.value = if (!comment.isHidden) "Comment hidden" else "Comment visible again"
+                }
+                .onFailure { _snackbarMessage.value = it.message }
+        }
+    }
+
+    fun deleteComment(video: VideoEntity, comment: CommentEntity) {
+        val actor = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.deleteComment(actor, video, comment)
+                .onSuccess { _snackbarMessage.value = "Comment deleted" }
+                .onFailure { _snackbarMessage.value = it.message }
         }
     }
 
@@ -550,6 +677,13 @@ class BharatTubeViewModel(
         viewModelScope.launch {
             repository.addVideoToPlaylist(playlistId, videoId)
             _snackbarMessage.value = "Added to playlist"
+        }
+    }
+
+    fun removeVideoFromPlaylist(playlistId: String, videoId: String) {
+        viewModelScope.launch {
+            repository.removeVideoFromPlaylist(playlistId, videoId)
+            _snackbarMessage.value = "Removed from playlist"
         }
     }
 
@@ -834,6 +968,30 @@ class BharatTubeViewModel(
         viewModelScope.launch {
             repository.boostUserWork(admin, target, boostPercent)
             _snackbarMessage.value = "Boost set to $boostPercent% for ${target.handle}"
+        }
+    }
+
+    fun setChannelVerified(channel: ChannelEntity, verified: Boolean) {
+        val admin = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.setChannelVerified(admin, channel, verified)
+            _snackbarMessage.value = if (verified) {
+                "Blue Tick enabled for ${channel.name}"
+            } else {
+                "Blue Tick removed for ${channel.name}"
+            }
+        }
+    }
+
+    fun setChannelMonetization(channel: ChannelEntity, enabled: Boolean) {
+        val admin = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.setChannelMonetization(admin, channel, enabled)
+            _snackbarMessage.value = if (enabled) {
+                "Monetization ON for ${channel.name}"
+            } else {
+                "Monetization OFF for ${channel.name}"
+            }
         }
     }
 

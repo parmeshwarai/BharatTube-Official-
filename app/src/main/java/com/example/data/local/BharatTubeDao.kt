@@ -39,6 +39,12 @@ interface BharatTubeDao {
     @Query("SELECT * FROM users WHERE uid = :uid LIMIT 1")
     suspend fun getUser(uid: String): UserProfileEntity?
 
+    @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
+    suspend fun findUserByEmail(email: String): UserProfileEntity?
+
+    @Query("SELECT * FROM users WHERE phone = :phone LIMIT 1")
+    suspend fun findUserByPhone(phone: String): UserProfileEntity?
+
     @Query("SELECT * FROM users")
     suspend fun getAllUsersSync(): List<UserProfileEntity>
 
@@ -73,6 +79,9 @@ interface BharatTubeDao {
     @Query("UPDATE channels SET monetizationEnabled = :enabled WHERE id = :channelId")
     suspend fun updateChannelMonetization(channelId: String, enabled: Boolean)
 
+    @Query("UPDATE channels SET isVerified = :verified WHERE id = :channelId")
+    suspend fun updateChannelVerification(channelId: String, verified: Boolean)
+
     // Videos
     @Query("SELECT * FROM videos ORDER BY createdAt DESC")
     fun observeAllVideos(): Flow<List<VideoEntity>>
@@ -98,8 +107,11 @@ interface BharatTubeDao {
     @Query("UPDATE videos SET viewCount = viewCount + 1 WHERE id = :videoId")
     suspend fun incrementVideoView(videoId: String)
 
-    @Query("UPDATE videos SET isLiked = :liked, likeCount = likeCount + :delta WHERE id = :videoId")
+    @Query("UPDATE videos SET isLiked = :liked, likeCount = MAX(0, likeCount + :delta) WHERE id = :videoId")
     suspend fun updateVideoLike(videoId: String, liked: Boolean, delta: Long)
+
+    @Query("UPDATE videos SET isLiked = :liked, likeCount = MAX(0, likeCount + :likeDelta), isDisliked = :disliked, dislikeCount = MAX(0, dislikeCount + :dislikeDelta) WHERE id = :videoId")
+    suspend fun updateVideoLikeAndDislike(videoId: String, liked: Boolean, likeDelta: Long, disliked: Boolean, dislikeDelta: Long)
 
     @Query("UPDATE videos SET isWatchLater = :watchLater WHERE id = :videoId")
     suspend fun updateWatchLater(videoId: String, watchLater: Boolean)
@@ -142,7 +154,10 @@ interface BharatTubeDao {
     suspend fun deleteVideo(videoId: String)
 
     // Comments
-    @Query("SELECT * FROM comments WHERE videoId = :videoId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM comments ORDER BY isPinned DESC, createdAt DESC")
+    fun observeAllComments(): Flow<List<CommentEntity>>
+
+    @Query("SELECT * FROM comments WHERE videoId = :videoId ORDER BY isPinned DESC, createdAt DESC")
     fun observeCommentsForVideo(videoId: String): Flow<List<CommentEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -150,6 +165,12 @@ interface BharatTubeDao {
 
     @Query("UPDATE comments SET likeCount = likeCount + 1 WHERE id = :commentId")
     suspend fun likeComment(commentId: String)
+
+    @Query("UPDATE comments SET isPinned = :isPinned, isHidden = :isHidden WHERE id = :commentId")
+    suspend fun updateCommentModeration(commentId: String, isPinned: Boolean, isHidden: Boolean)
+
+    @Query("DELETE FROM comments WHERE id = :commentId")
+    suspend fun deleteComment(commentId: String)
 
     // Playlists
     @Query("SELECT * FROM playlists WHERE ownerUserId = :userId ORDER BY createdAt DESC")
@@ -163,6 +184,9 @@ interface BharatTubeDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun addVideoToPlaylist(ref: PlaylistVideoCrossRef)
+
+    @Query("DELETE FROM playlist_videos WHERE playlistId = :playlistId AND videoId = :videoId")
+    suspend fun removeVideoFromPlaylist(playlistId: String, videoId: String)
 
     @Query("SELECT * FROM playlist_videos")
     fun observePlaylistVideoRefs(): Flow<List<PlaylistVideoCrossRef>>

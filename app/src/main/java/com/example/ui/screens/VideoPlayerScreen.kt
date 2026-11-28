@@ -27,17 +27,25 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,9 +83,11 @@ import com.example.data.model.ChannelEntity
 import com.example.data.model.CommentEntity
 import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.PlaylistEntity
+import com.example.data.model.UserProfileEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoFormat
 import com.example.ui.components.BharatTubeVideoPlayer
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -110,7 +120,14 @@ fun VideoPlayerScreen(
     onOpenChannel: (String) -> Unit,
     onSubmitReport: (String, String, String, String, String) -> Unit,
     onEnterPip: () -> Unit,
-    onShareVideo: (String) -> Unit = {}
+    onShareVideo: (String) -> Unit = {},
+    currentUser: UserProfileEntity? = null,
+    isDownloaded: Boolean = false,
+    onToggleDislike: (VideoEntity) -> Unit = {},
+    onToggleDownload: (VideoEntity) -> Unit = {},
+    onPinComment: (VideoEntity, CommentEntity) -> Unit = { _, _ -> },
+    onHideComment: (VideoEntity, CommentEntity) -> Unit = { _, _ -> },
+    onDeleteComment: (VideoEntity, CommentEntity) -> Unit = { _, _ -> }
 ) {
     val video by observeVideo(videoId).collectAsStateWithLifecycle(initialValue = null)
     val comments by observeComments(videoId).collectAsStateWithLifecycle(initialValue = emptyList())
@@ -138,6 +155,13 @@ fun VideoPlayerScreen(
 
     val context = LocalContext.current
     val channel = channels.firstOrNull { it.id == currentVideo.channelId }
+    val verifiedChannelIds = remember(channels) { channels.filter { it.isVerified }.map { it.id }.toSet() }
+    val canModerateComments = remember(currentUser, channel) {
+        currentUser != null && (currentUser.isAdmin || channel?.ownerUserId == currentUser.uid)
+    }
+    val visibleComments = remember(comments, canModerateComments) {
+        if (canModerateComments) comments else comments.filter { !it.isHidden }
+    }
     val upNext = remember(allVideos, currentVideo.id) {
         allVideos.filter { it.id != currentVideo.id && !it.isLive }.take(6)
     }
@@ -211,7 +235,15 @@ fun VideoPlayerScreen(
         topBar = {
             if (!isFullscreen) {
                 TopAppBar(
-                    title = { Text(currentVideo.channelName, maxLines = 1) },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(currentVideo.channelName, maxLines = 1)
+                            if (channel?.isVerified == true) {
+                                Spacer(Modifier.width(4.dp))
+                                VerifiedChannelBadge(isVerified = true, size = 15.dp)
+                            }
+                        }
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack, modifier = Modifier.testTag("player_back_button")) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -366,6 +398,30 @@ fun VideoPlayerScreen(
                             }
                             item {
                                 Surface(
+                                    onClick = { onToggleDislike(currentVideo) },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (currentVideo.isDisliked) LotusCoral.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.testTag("player_dislike_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            if (currentVideo.isDisliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                                            contentDescription = "Dislike",
+                                            tint = if (currentVideo.isDisliked) LotusCoral else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        if (currentVideo.dislikeCount > 0L) {
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(BharatTubeCatalog.formatCompactCount(currentVideo.dislikeCount), style = MaterialTheme.typography.labelLarge)
+                                        }
+                                    }
+                                }
+                            }
+                            item {
+                                Surface(
                                     onClick = { onToggleWatchLater(currentVideo) },
                                     shape = RoundedCornerShape(20.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant
@@ -381,6 +437,28 @@ fun VideoPlayerScreen(
                                         )
                                         Spacer(Modifier.width(6.dp))
                                         Text(if (currentVideo.isWatchLater) "Saved" else "Watch Later", style = MaterialTheme.typography.labelLarge)
+                                    }
+                                }
+                            }
+                            item {
+                                Surface(
+                                    onClick = { onToggleDownload(currentVideo) },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isDownloaded) SaffronFlame.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.testTag("player_download_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            if (isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                                            contentDescription = "Download Video",
+                                            tint = if (isDownloaded) SaffronFlame else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(if (isDownloaded) "Downloaded" else "Download", style = MaterialTheme.typography.labelLarge)
                                     }
                                 }
                             }
@@ -468,7 +546,13 @@ fun VideoPlayerScreen(
                                     }
                                     Spacer(Modifier.width(10.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(channel.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(channel.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                            if (channel.isVerified) {
+                                                Spacer(Modifier.width(4.dp))
+                                                VerifiedChannelBadge(isVerified = true, size = 15.dp)
+                                            }
+                                        }
                                         Text(
                                             "${BharatTubeCatalog.formatCompactCount(channel.subscriberCount)} subscribers",
                                             style = MaterialTheme.typography.bodySmall,
@@ -513,7 +597,18 @@ fun VideoPlayerScreen(
                     // Comments Section
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Comments (${comments.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Comments (${visibleComments.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Chhotu AI Guard Active",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SaffronFlame
+                                )
+                            }
                             if (settings.commentsEnabled && currentVideo.allowComments) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     OutlinedTextField(
@@ -545,8 +640,11 @@ fun VideoPlayerScreen(
                         }
                     }
 
-                    items(comments, key = { it.id }) { comment ->
+                    items(visibleComments, key = { it.id }) { comment ->
                         val isTranslated = comment.id in translatedIds
+                        val canDelete = canModerateComments || (currentUser != null && comment.authorUserId == currentUser.uid)
+                        var showModerationMenu by remember { mutableStateOf(false) }
+
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surface,
@@ -557,6 +655,71 @@ fun VideoPlayerScreen(
                                     Text(comment.authorName, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.width(8.dp))
                                     Text(comment.originalLanguage.uppercase(), style = MaterialTheme.typography.labelSmall, color = SaffronFlame)
+                                    if (comment.isPinned) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Surface(shape = RoundedCornerShape(6.dp), color = SaffronFlame.copy(alpha = 0.16f)) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Filled.PushPin, contentDescription = "Pinned", tint = SaffronFlame, modifier = Modifier.size(11.dp))
+                                                Spacer(Modifier.width(3.dp))
+                                                Text("Pinned", color = SaffronFlame, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    if (comment.isHidden) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Surface(shape = RoundedCornerShape(6.dp), color = LotusCoral.copy(alpha = 0.18f)) {
+                                            Text(
+                                                "Hidden",
+                                                color = LotusCoral,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    if (canModerateComments || canDelete) {
+                                        Box {
+                                            IconButton(
+                                                onClick = { showModerationMenu = true },
+                                                modifier = Modifier.size(32.dp).testTag("comment_mod_${comment.id}")
+                                            ) {
+                                                Icon(Icons.Filled.MoreVert, contentDescription = "Moderate comment", modifier = Modifier.size(18.dp))
+                                            }
+                                            DropdownMenu(
+                                                expanded = showModerationMenu,
+                                                onDismissRequest = { showModerationMenu = false }
+                                            ) {
+                                                if (canModerateComments) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(if (comment.isPinned) "Unpin Comment" else "Pin Comment") },
+                                                        onClick = {
+                                                            showModerationMenu = false
+                                                            onPinComment(currentVideo, comment)
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text(if (comment.isHidden) "Unhide Comment" else "Hide Comment") },
+                                                        onClick = {
+                                                            showModerationMenu = false
+                                                            onHideComment(currentVideo, comment)
+                                                        }
+                                                    )
+                                                }
+                                                if (canDelete) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Delete Comment", color = LotusCoral) },
+                                                        onClick = {
+                                                            showModerationMenu = false
+                                                            onDeleteComment(currentVideo, comment)
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Text(
@@ -594,7 +757,17 @@ fun VideoPlayerScreen(
                             video = next,
                             onClick = { onOpenVideo(next) },
                             onChannelClick = { onOpenChannel(next.channelId) },
-                            onToggleWatchLater = { onToggleWatchLater(next) }
+                            onToggleWatchLater = { onToggleWatchLater(next) },
+                            isChannelVerified = next.channelId in verifiedChannelIds,
+                            onReportClick = { showReportDialog = true },
+                            onShareClick = {
+                                onShareVideo(next.id)
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    putExtra(Intent.EXTRA_TEXT, "Watch '${next.title}' on BharatTube!")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(share, "Share Video"))
+                            }
                         )
                     }
                 }

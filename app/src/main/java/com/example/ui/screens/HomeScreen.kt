@@ -51,8 +51,10 @@ import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoFormat
 import com.example.ads.AdMobBannerAd
+import androidx.compose.material.icons.filled.TrendingUp
 import com.example.ui.components.BharatTubeThumbnail
 import com.example.ui.components.IntegrationDisclosureBanner
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -74,10 +76,14 @@ fun HomeScreen(
     onOpenChannel: (String) -> Unit,
     onToggleWatchLater: (VideoEntity) -> Unit,
     onOpenCreateChannel: () -> Unit,
-    onOpenSubscriptionsFeed: () -> Unit
+    onOpenSubscriptionsFeed: () -> Unit,
+    onOpenTrending: () -> Unit = {},
+    onReportVideo: (VideoEntity) -> Unit = {},
+    onShareVideo: (VideoEntity) -> Unit = {}
 ) {
     val longAndLiveVideos = recommendedVideos.filter { it.format != VideoFormat.SHORT.name }
     val subscribedCount = channels.count { it.isSubscribedByMe }
+    val verifiedChannelIds = channels.filter { it.isVerified }.map { it.id }.toSet()
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -91,6 +97,17 @@ fun HomeScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                item {
+                    FilterChip(
+                        selected = false,
+                        onClick = onOpenTrending,
+                        leadingIcon = {
+                            Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = SaffronFlame, modifier = Modifier.size(16.dp))
+                        },
+                        label = { Text("Trending") },
+                        modifier = Modifier.testTag("home_trending_chip")
+                    )
+                }
                 item {
                     FilterChip(
                         selected = false,
@@ -220,11 +237,17 @@ fun HomeScreen(
                                 Spacer(Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(live.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(
-                                        "${live.channelName} • ${live.liveViewerCount} watching",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            "${live.channelName} • ${live.liveViewerCount} watching",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (live.channelId in verifiedChannelIds) {
+                                            Spacer(Modifier.width(4.dp))
+                                            VerifiedChannelBadge(isVerified = true, size = 14.dp)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -330,6 +353,9 @@ fun HomeScreen(
                     onClick = { if (video.isLive) onOpenLive(video) else onOpenVideo(video) },
                     onChannelClick = { onOpenChannel(video.channelId) },
                     onToggleWatchLater = { onToggleWatchLater(video) },
+                    isChannelVerified = video.channelId in verifiedChannelIds,
+                    onReportClick = { onReportVideo(video) },
+                    onShareClick = { onShareVideo(video) },
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }

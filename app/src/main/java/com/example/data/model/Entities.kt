@@ -10,6 +10,7 @@ data class UserProfileEntity(
     val handle: String,
     val email: String = "",
     val phone: String = "",
+    val passwordHash: String = "",
     val authProvider: String = "Local Account",
     val bio: String = "",
     val countryCode: String = "IN",
@@ -52,6 +53,7 @@ data class ChannelEntity(
     val isSubscribedByMe: Boolean = false,
     val notificationsEnabled: Boolean = true,
     val monetizationEnabled: Boolean = true,
+    val isVerified: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -75,6 +77,8 @@ data class VideoEntity(
     val viewCount: Long = 0L,
     val likeCount: Long = 0L,
     val isLiked: Boolean = false,
+    val dislikeCount: Long = 0L,
+    val isDisliked: Boolean = false,
     val isWatchLater: Boolean = false,
     val lastPositionMs: Long = 0L,
     val playbackQuality: String = "1080p",
@@ -97,6 +101,7 @@ data class VideoEntity(
     val chhotuCheckSummary: String = "",
     val chhotuCheckMode: String = "NORMAL",
     val chhotuCheckedAt: Long = 0L,
+    val scheduledAtEpochMs: Long = 0L,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -111,6 +116,8 @@ data class CommentEntity(
     val originalLanguage: String = "en",
     val likeCount: Int = 0,
     val isReported: Boolean = false,
+    val isPinned: Boolean = false,
+    val isHidden: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )
 

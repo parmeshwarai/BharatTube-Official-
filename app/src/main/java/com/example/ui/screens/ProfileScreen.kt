@@ -94,6 +94,7 @@ import com.example.ui.components.ChannelLogoAvatar
 import com.example.ui.components.OwnerCrownControlIcon
 import com.example.ui.components.ProfileFormatters
 import com.example.ui.components.SwitchOrCreateAccountDialog
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.theme.AmberGold
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
@@ -126,7 +127,9 @@ fun ProfileScreen(
     onOpenUpload: () -> Unit,
     onSwitchUser: (String) -> Unit,
     onCreateLocalAccount: (String, String, String, String, String, Boolean) -> Unit,
-    onSignInBack: (String?) -> Unit
+    onSignInBack: (String?) -> Unit,
+    onOpenAuth: () -> Unit = {},
+    onOpenStudio: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -243,6 +246,12 @@ fun ProfileScreen(
                             modifier = Modifier.fillMaxWidth().testTag("sign_back_in_button")
                         ) {
                             Text("Continue as ${user?.username ?: "Creator"}")
+                        }
+                        OutlinedButton(
+                            onClick = onOpenAuth,
+                            modifier = Modifier.fillMaxWidth().testTag("profile_open_auth_button")
+                        ) {
+                            Text("Sign In / Create Account (Google, OTP, Email)", color = SaffronFlame)
                         }
                         OutlinedButton(
                             onClick = { showSwitchDialog = true },
@@ -380,14 +389,20 @@ fun ProfileScreen(
                             )
                             Spacer(Modifier.width(14.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = activeChannel.name,
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = activeChannel.name,
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (activeChannel.isVerified) {
+                                        Spacer(Modifier.width(6.dp))
+                                        VerifiedChannelBadge(isVerified = true, size = 18.dp)
+                                    }
+                                }
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = activeChannel.handle,
@@ -523,6 +538,32 @@ fun ProfileScreen(
                                         maxLines = 1
                                     )
                                 }
+                            }
+                        }
+
+                        Surface(
+                            onClick = onOpenStudio,
+                            shape = RoundedCornerShape(22.dp),
+                            color = SaffronFlame.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, SaffronFlame.copy(alpha = 0.65f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("profile_open_studio_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Settings, contentDescription = null, tint = SaffronFlame, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "BharatTube Studio",
+                                    color = SaffronFlame,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }

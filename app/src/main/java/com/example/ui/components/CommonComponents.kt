@@ -83,13 +83,22 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Subscriptions
-import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 
 @Composable
@@ -153,6 +162,21 @@ fun BharatTubeLogoMark(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun VerifiedChannelBadge(
+    isVerified: Boolean,
+    size: Dp = 15.dp,
+    modifier: Modifier = Modifier
+) {
+    if (!isVerified) return
+    Icon(
+        imageVector = Icons.Filled.Verified,
+        contentDescription = "Verified Channel",
+        tint = Color(0xFF2F80ED),
+        modifier = modifier.size(size)
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BharatTubeTopBar(
@@ -163,27 +187,64 @@ fun BharatTubeTopBar(
 ) {
     TopAppBar(
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BharatTubeLogoMark()
-                Spacer(Modifier.width(10.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                BharatTubeLogoMark(modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(7.dp))
                 Text(
                     text = "BharatTube",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
                 )
+                Spacer(Modifier.width(10.dp))
+                Surface(
+                    onClick = onSearchClick,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .testTag("search_button")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Search...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         },
         actions = {
-            // Small circular Chhotu AI button next to Bell and Search
+            // Small circular Chhotu AI button next to Bell and Search Bar
             Box(
                 modifier = Modifier
                     .minimumInteractiveComponentSize()
-                    .padding(end = 2.dp),
+                    .padding(start = 2.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(
@@ -199,7 +260,7 @@ fun BharatTubeTopBar(
                         imageVector = Icons.Filled.SmartToy,
                         contentDescription = "Open Chhotu AI Assistant",
                         tint = SaffronFlame,
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -220,15 +281,6 @@ fun BharatTubeTopBar(
                         contentDescription = "Notifications"
                     )
                 }
-            }
-            IconButton(
-                onClick = onSearchClick,
-                modifier = Modifier.testTag("search_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = "Search"
-                )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -282,8 +334,13 @@ fun VideoFeedCard(
     onClick: () -> Unit,
     onChannelClick: () -> Unit,
     onToggleWatchLater: () -> Unit,
+    isChannelVerified: Boolean = false,
+    onReportClick: (() -> Unit)? = null,
+    onShareClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -374,23 +431,76 @@ fun VideoFeedCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "${video.channelName} • ${BharatTubeCatalog.formatCompactCount(video.viewCount)} views • ${video.playbackQuality}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = video.channelName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        VerifiedChannelBadge(isVerified = isChannelVerified, size = 14.dp)
+                        Text(
+                            text = "• ${BharatTubeCatalog.formatCompactCount(video.viewCount)} views",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                IconButton(
-                    onClick = onToggleWatchLater,
-                    modifier = Modifier.testTag("watch_later_${video.id}")
-                ) {
-                    Icon(
-                        imageVector = if (video.isWatchLater) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                        contentDescription = "Save to Watch Later",
-                        tint = if (video.isWatchLater) SaffronFlame else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box {
+                    IconButton(
+                        onClick = { menuExpanded = true },
+                        modifier = Modifier.testTag("video_menu_${video.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Video options",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(if (video.isWatchLater) "Remove Watch Later" else "Save to Watch Later") },
+                            leadingIcon = {
+                                Icon(
+                                    if (video.isWatchLater) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleWatchLater()
+                            }
+                        )
+                        if (onShareClick != null) {
+                            DropdownMenuItem(
+                                text = { Text("Share") },
+                                leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onShareClick()
+                                }
+                            )
+                        }
+                        if (onReportClick != null) {
+                            DropdownMenuItem(
+                                text = { Text("Report Video") },
+                                leadingIcon = { Icon(Icons.Filled.Flag, contentDescription = null, tint = LotusCoral) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onReportClick()
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -437,7 +547,7 @@ enum class BharatTab(val route: String, val label: String) {
     HOME("home", "Home"),
     SHORTS("shorts", "Shorts"),
     CREATE("create", "Upload"),
-    SUBSCRIPTIONS("subscriptions", "Subscriptions"),
+    LIVE("live_tab", "Live"),
     PROFILE("profile", "Profile")
 }
 
@@ -492,7 +602,7 @@ fun BharatTubeBottomBar(
                         val icon = when (tab) {
                             BharatTab.HOME -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
                             BharatTab.SHORTS -> if (selected) Icons.Filled.PlayCircle else Icons.Outlined.PlayCircle
-                            BharatTab.SUBSCRIPTIONS -> if (selected) Icons.Filled.Subscriptions else Icons.Outlined.Subscriptions
+                            BharatTab.LIVE -> Icons.Filled.Sensors
                             BharatTab.PROFILE -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
                             BharatTab.CREATE -> Icons.Filled.Add
                         }

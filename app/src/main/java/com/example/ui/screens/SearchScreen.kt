@@ -52,6 +52,7 @@ import com.example.data.model.ChannelEntity
 import com.example.data.model.SearchHistoryEntity
 import com.example.data.model.VideoEntity
 import com.example.data.model.VideoVisibility
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.components.VideoFeedCard
 import com.example.ui.theme.SaffronFlame
 
@@ -70,12 +71,15 @@ fun SearchScreen(
     onOpenVideo: (VideoEntity) -> Unit,
     onOpenChannel: (String) -> Unit,
     onToggleWatchLater: (VideoEntity) -> Unit,
-    onVoiceUnavailable: () -> Unit
+    onVoiceUnavailable: () -> Unit,
+    onReportVideo: (VideoEntity) -> Unit = {},
+    onShareVideo: (VideoEntity) -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
     var sortByPopular by remember { mutableStateOf(false) }
     var filterLang by remember { mutableStateOf("ALL") }
     val channelOwnerMap = remember(channels) { channels.associate { it.id to it.ownerUserId } }
+    val verifiedChannelIds = remember(channels) { channels.filter { it.isVerified }.map { it.id }.toSet() }
 
     val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -243,7 +247,13 @@ fun SearchScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text("${ch.name} (${ch.handle})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${ch.name} (${ch.handle})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                if (ch.isVerified) {
+                                    Spacer(Modifier.width(4.dp))
+                                    VerifiedChannelBadge(isVerified = true, size = 14.dp)
+                                }
+                            }
                             Text("${BharatTubeCatalog.formatCompactCount(ch.subscriberCount)} subscribers • ${ch.category}", style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -262,7 +272,10 @@ fun SearchScreen(
                         onOpenVideo(video)
                     },
                     onChannelClick = { onOpenChannel(video.channelId) },
-                    onToggleWatchLater = { onToggleWatchLater(video) }
+                    onToggleWatchLater = { onToggleWatchLater(video) },
+                    isChannelVerified = video.channelId in verifiedChannelIds,
+                    onReportClick = { onReportVideo(video) },
+                    onShareClick = { onShareVideo(video) }
                 )
             }
         }

@@ -183,7 +183,7 @@ fun BharatTubeVideoPlayer(
                         }
                     }
                     DropdownMenu(expanded = speedMenuExpanded, onDismissRequest = { speedMenuExpanded = false }) {
-                        listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { speed ->
+                        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { speed ->
                             DropdownMenuItem(
                                 text = { Text("${speed}x") },
                                 onClick = {
@@ -210,7 +210,7 @@ fun BharatTubeVideoPlayer(
                         )
                     }
                     DropdownMenu(expanded = qualityMenuExpanded, onDismissRequest = { qualityMenuExpanded = false }) {
-                        listOf("4K", "1080p", "720p", "480p", "Auto").forEach { q ->
+                        listOf("4K", "1080p", "720p", "480p", "360p", "240p", "144p", "Auto").forEach { q ->
                             DropdownMenuItem(
                                 text = { Text(q) },
                                 onClick = {

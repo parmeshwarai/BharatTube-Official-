@@ -65,6 +65,7 @@ import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.UserProfileEntity
 import com.example.data.model.VideoEntity
 import com.example.ui.components.ChannelLogoAvatar
+import com.example.ui.components.VerifiedChannelBadge
 import com.example.ui.theme.AmberGold
 import com.example.ui.theme.ElectricCobalt
 import com.example.ui.theme.EmeraldVerified
@@ -893,3 +894,71 @@ private fun UserActionChip(
         )
     }
 }
+
+@Composable
+internal fun OwnerChannelVerificationCard(
+    channel: ChannelEntity,
+    onToggleVerified: (Boolean) -> Unit,
+    onToggleMonetization: (Boolean) -> Unit
+) {
+    OwnerControlCard(borderColor = if (channel.isVerified) Color(0xFF2F80ED).copy(alpha = 0.55f) else Color(0xFF252938)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ChannelLogoAvatar(
+                avatarUri = channel.avatarUri,
+                contentDescription = channel.name,
+                size = 42.dp,
+                borderWidth = 1.5.dp,
+                borderColor = if (channel.isVerified) Color(0xFF2F80ED) else SaffronFlame
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = channel.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (channel.isVerified) {
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedChannelBadge(isVerified = true, size = 14.dp)
+                    }
+                }
+                Text(
+                    text = "${channel.handle} • ${BharatTubeCatalog.formatCompactCount(channel.subscriberCount)} subs",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9AA1B6)
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Blue Tick Verification", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            Switch(
+                checked = channel.isVerified,
+                onCheckedChange = onToggleVerified,
+                modifier = Modifier.testTag("owner_verify_channel_${channel.id}"),
+                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF2F80ED))
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Channel Monetization", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            Switch(
+                checked = channel.monetizationEnabled,
+                onCheckedChange = onToggleMonetization,
+                modifier = Modifier.testTag("owner_monetize_channel_${channel.id}"),
+                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = EmeraldVerified)
+            )
+        }
+    }
+}
+

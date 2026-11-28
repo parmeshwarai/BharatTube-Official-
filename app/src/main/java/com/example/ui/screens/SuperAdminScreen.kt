@@ -98,7 +98,9 @@ fun SuperAdminScreen(
     onBoostUser: (UserProfileEntity, Int) -> Unit,
     onTriggerAutoPayoutSweep: () -> Unit,
     onUpdatePayoutStatus: (PayoutEntity, PayoutStatus) -> Unit,
-    onResolveReport: (ReportEntity, String) -> Unit
+    onResolveReport: (ReportEntity, String) -> Unit,
+    onSetChannelVerified: (ChannelEntity, Boolean) -> Unit = { _, _ -> },
+    onSetChannelMonetization: (ChannelEntity, Boolean) -> Unit = { _, _ -> }
 ) {
     if (currentUser?.isAdmin != true) {
         Scaffold(
@@ -581,6 +583,27 @@ fun SuperAdminScreen(
                                     onLimitUser(target, limit, if (limit) "Upload/Live limit restricted by Owner" else "Work limit restored by Owner")
                                 },
                                 onBoostChange = { pct -> onBoostUser(target, pct) }
+                            )
+                        }
+                        item {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = "Channel Verification (Blue Tick) & Monetization",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Owner-only controls to enable/disable Blue Tick badge and per-channel monetization.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF9AA1B6)
+                            )
+                        }
+                        items(channels, key = { "owner_ch_${it.id}" }) { ch ->
+                            OwnerChannelVerificationCard(
+                                channel = ch,
+                                onToggleVerified = { verified -> onSetChannelVerified(ch, verified) },
+                                onToggleMonetization = { enabled -> onSetChannelMonetization(ch, enabled) }
                             )
                         }
                     }

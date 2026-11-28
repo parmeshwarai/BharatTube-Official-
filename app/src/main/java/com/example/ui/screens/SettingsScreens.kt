@@ -362,7 +362,10 @@ fun SettingDetailScreen(
     onToggleHistoryPaused: () -> Unit,
     onClearWatchHistory: () -> Unit,
     onClearSearchHistory: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onOpenAuth: () -> Unit = {},
+    onOpenTerms: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {}
 ) {
     val screenTitle = when (sectionId) {
         "general" -> "General"
@@ -478,6 +481,13 @@ fun SettingDetailScreen(
                                 }
                             }
                         }
+                    }
+                    item {
+                        SettingsActionCard(
+                            title = "Login / Sign Up / Reset Password",
+                            subtitle = "Google Sign-In, Mobile OTP, Email Login & Forgot Password",
+                            onClick = onOpenAuth
+                        )
                     }
                     item {
                         SettingsActionCard(
@@ -771,6 +781,20 @@ fun SettingDetailScreen(
                             title = "Safety Reports & Support",
                             subtitle = "Manage submitted reports, appeals, and privacy help",
                             onClick = onOpenSupport
+                        )
+                    }
+                    item {
+                        SettingsActionCard(
+                            title = "Terms of Service",
+                            subtitle = "Community, monetization, and content ownership rules",
+                            onClick = onOpenTerms
+                        )
+                    }
+                    item {
+                        SettingsActionCard(
+                            title = "Privacy Policy",
+                            subtitle = "How BharatTube stores history, credentials & permissions",
+                            onClick = onOpenPrivacy
                         )
                     }
                 }

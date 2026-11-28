@@ -433,4 +433,26 @@ class BharatTubePlatformUnitTest {
         assertTrue(snapAll.topCities.isNotEmpty())
         assertTrue(snapAll.topCountries.any { it.label == "India" })
     }
+
+    @Test
+    fun chhotuCommentModeratorBlocksAbuseAndAllowsCleanComments() {
+        val cleanEn = com.example.chhotuai.ChhotuUploadModerator.moderateComment(
+            text = "Bahut badhiya video hai bhai! Informative content.",
+            strictMode = false
+        )
+        assertTrue(cleanEn.allowed)
+
+        val abusive = com.example.chhotuai.ChhotuUploadModerator.moderateComment(
+            text = "You are a fraud scammer idiot!",
+            strictMode = false
+        )
+        assertFalse(abusive.allowed)
+        assertTrue(abusive.reason.contains("Chhotu AI", ignoreCase = true))
+
+        val normalPromo = com.example.chhotuai.ChhotuUploadModerator.moderateComment(
+            text = "Join now https://promo-spam-site.com earn 50000 daily",
+            strictMode = true
+        )
+        assertFalse(normalPromo.allowed)
+    }
 }

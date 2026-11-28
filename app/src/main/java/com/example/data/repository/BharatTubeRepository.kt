@@ -48,6 +48,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.UUID
 
 class BharatTubeRepository(
@@ -59,6 +61,7 @@ class BharatTubeRepository(
     private val activeUploadJobs = mutableMapOf<String, Job>()
     private val chhotuBackendClient = ChhotuAiBackendClient()
     private val chhotuDiagnosticsEngine = ChhotuDiagnosticsEngine(context, dao, chhotuBackendClient)
+    private val pendingOtps = mutableMapOf<String, Pair<String, Long>>()
 
     val preferences: Flow<UserPreferences> = prefsRepo.preferencesFlow
     val allUsers: Flow<List<UserProfileEntity>> = dao.observeAllUsers()
@@ -78,6 +81,7 @@ class BharatTubeRepository(
     fun observeMyChannels(uid: String): Flow<List<ChannelEntity>> = dao.observeMyChannels(uid)
     fun observeChannel(channelId: String): Flow<ChannelEntity?> = dao.observeChannel(channelId)
     fun observeVideo(videoId: String): Flow<VideoEntity?> = dao.observeVideo(videoId)
+    val allComments: Flow<List<CommentEntity>> = dao.observeAllComments()
     fun observeComments(videoId: String): Flow<List<CommentEntity>> = dao.observeCommentsForVideo(videoId)
     fun observePlaylists(uid: String): Flow<List<PlaylistEntity>> = dao.observePlaylists(uid)
     fun observePlaylistRefs(): Flow<List<PlaylistVideoCrossRef>> = dao.observePlaylistVideoRefs()
@@ -199,7 +203,210 @@ class BharatTubeRepository(
             prefsRepo.setActiveUser(user.uid)
             prefsRepo.setLanguage(user.languageCode)
             prefsRepo.setCountry(user.countryCode)
+            val userChannels = dao.getAllChannelsSync().filter { it.ownerUserId == user.uid }
+            userChannels.firstOrNull()?.let { prefsRepo.setActiveChannel(it.id) }
         }
+    }
+
+    private fun hashPassword(password: String, salt: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest("$salt::$password".toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private suspend fun ensureDefaultChannelForUser(user: UserProfileEntity) {
+        val existing = dao.getAllChannelsSync().firstOrNull { it.ownerUserId == user.uid }
+        if (existing != null) {
+            prefsRepo.setActiveChannel(existing.id)
+            return
+        }
+        val cleanHandle = user.handle.ifBlank { "@creator_${user.uid.takeLast(4)}" }
+        val channel = ChannelEntity(
+            id = "ch_${UUID.randomUUID().toString().take(8)}",
+            ownerUserId = user.uid,
+            name = user.username,
+            handle = cleanHandle,
+            description = "Official BharatTube channel of ${user.username}",
+            category = "Entertainment",
+            bannerUri = user.bannerUri.ifBlank { "drawable:img_hero_creators" },
+            avatarUri = user.avatarUri
+        )
+        dao.upsertChannel(channel)
+        prefsRepo.setActiveChannel(channel.id)
+    }
+
+    suspend fun signInWithGoogleAccount(name: String, email: String): Result<UserProfileEntity> {
+        val cleanEmail = email.trim().lowercase()
+        val cleanName = name.trim()
+        if (cleanName.isBlank() || !cleanEmail.contains("@")) {
+            return Result.failure(IllegalArgumentException("Enter a valid Google name and email address."))
+        }
+        val existing = dao.findUserByEmail(cleanEmail)
+        if (existing != null) {
+            if (existing.isBanned) return Result.failure(IllegalStateException("Account suspended: ${existing.banReason}"))
+            val updated = existing.copy(authProvider = "Google Sign-In")
+            dao.upsertUser(updated)
+            prefsRepo.setActiveUser(updated.uid)
+            ensureDefaultChannelForUser(updated)
+            return Result.success(updated)
+        }
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.userRegistrationEnabled) {
+            return Result.failure(IllegalStateException("New registrations are currently paused by Owner Control Center."))
+        }
+        val uid = "user_${UUID.randomUUID().toString().take(8)}"
+        val baseHandle = cleanName.lowercase().replace(Regex("[^a-z0-9]"), "").take(14).ifEmpty { "creator" }
+        val profile = UserProfileEntity(
+            uid = uid,
+            username = cleanName,
+            handle = "@$baseHandle",
+            email = cleanEmail,
+            authProvider = "Google Sign-In",
+            bio = "BharatTube Creator",
+            countryCode = "IN",
+            languageCode = "hi"
+        )
+        dao.upsertUser(profile)
+        prefsRepo.setActiveUser(profile.uid)
+        ensureDefaultChannelForUser(profile)
+        return Result.success(profile)
+    }
+
+    suspend fun requestAuthOtp(identifier: String): Result<String> {
+        val key = identifier.trim().lowercase()
+        if (key.length < 5) {
+            return Result.failure(IllegalArgumentException("Enter a valid mobile number or email."))
+        }
+        val code = (100000 + SecureRandom().nextInt(900000)).toString()
+        pendingOtps[key] = code to (System.currentTimeMillis() + 5 * 60_000L)
+        return Result.success(code)
+    }
+
+    suspend fun verifyPhoneOtpLogin(phone: String, otp: String, displayName: String): Result<UserProfileEntity> {
+        val normalizedPhone = phone.trim()
+        if (normalizedPhone.length < 8) {
+            return Result.failure(IllegalArgumentException("Enter a valid mobile number."))
+        }
+        val pending = pendingOtps[normalizedPhone.lowercase()]
+            ?: return Result.failure(IllegalStateException("Please tap Send OTP first."))
+        if (System.currentTimeMillis() > pending.second) {
+            pendingOtps.remove(normalizedPhone.lowercase())
+            return Result.failure(IllegalStateException("OTP expired. Request a new OTP."))
+        }
+        if (pending.first != otp.trim()) {
+            return Result.failure(IllegalArgumentException("Invalid 6-digit OTP."))
+        }
+        pendingOtps.remove(normalizedPhone.lowercase())
+
+        val existing = dao.findUserByPhone(normalizedPhone)
+        if (existing != null) {
+            if (existing.isBanned) return Result.failure(IllegalStateException("Account suspended: ${existing.banReason}"))
+            prefsRepo.setActiveUser(existing.uid)
+            ensureDefaultChannelForUser(existing)
+            return Result.success(existing)
+        }
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.userRegistrationEnabled) {
+            return Result.failure(IllegalStateException("New registrations are paused by Owner Control Center."))
+        }
+        val name = displayName.trim().ifBlank { "Creator ${normalizedPhone.takeLast(4)}" }
+        val uid = "user_${UUID.randomUUID().toString().take(8)}"
+        val handle = "@bt_${normalizedPhone.filter { it.isDigit() }.takeLast(6).ifEmpty { uid.takeLast(5) }}"
+        val profile = UserProfileEntity(
+            uid = uid,
+            username = name,
+            handle = handle,
+            phone = normalizedPhone,
+            authProvider = "Mobile OTP",
+            bio = "BharatTube Creator",
+            countryCode = "IN",
+            languageCode = "hi"
+        )
+        dao.upsertUser(profile)
+        prefsRepo.setActiveUser(profile.uid)
+        ensureDefaultChannelForUser(profile)
+        return Result.success(profile)
+    }
+
+    suspend fun registerWithEmail(name: String, email: String, password: String): Result<UserProfileEntity> {
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.userRegistrationEnabled) {
+            return Result.failure(IllegalStateException("New sign-ups are paused by Owner Control Center."))
+        }
+        val cleanName = name.trim()
+        val cleanEmail = email.trim().lowercase()
+        if (cleanName.length < 2) return Result.failure(IllegalArgumentException("Enter your full name."))
+        if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
+            return Result.failure(IllegalArgumentException("Enter a valid email address."))
+        }
+        if (password.length < 6) {
+            return Result.failure(IllegalArgumentException("Password must be at least 6 characters."))
+        }
+        if (dao.findUserByEmail(cleanEmail) != null) {
+            return Result.failure(IllegalStateException("An account with $cleanEmail already exists. Please Login."))
+        }
+        val uid = "user_${UUID.randomUUID().toString().take(8)}"
+        val baseHandle = cleanName.lowercase().replace(Regex("[^a-z0-9]"), "").take(14).ifEmpty { "creator" }
+        val profile = UserProfileEntity(
+            uid = uid,
+            username = cleanName,
+            handle = "@$baseHandle",
+            email = cleanEmail,
+            passwordHash = hashPassword(password, uid),
+            authProvider = "Email & Password",
+            bio = "BharatTube Creator",
+            countryCode = "IN",
+            languageCode = "hi"
+        )
+        dao.upsertUser(profile)
+        prefsRepo.setActiveUser(profile.uid)
+        ensureDefaultChannelForUser(profile)
+        return Result.success(profile)
+    }
+
+    suspend fun loginWithEmail(email: String, password: String): Result<UserProfileEntity> {
+        val cleanEmail = email.trim().lowercase()
+        if (cleanEmail.isBlank() || password.isBlank()) {
+            return Result.failure(IllegalArgumentException("Enter both email and password."))
+        }
+        val user = dao.findUserByEmail(cleanEmail)
+            ?: return Result.failure(IllegalStateException("No account found for $cleanEmail."))
+        if (user.isBanned) {
+            return Result.failure(IllegalStateException("Account suspended: ${user.banReason}"))
+        }
+        if (user.passwordHash.isBlank()) {
+            return Result.failure(IllegalStateException("This account has no password set. Use Forgot Password or Google Login."))
+        }
+        val expected = hashPassword(password, user.uid)
+        if (expected != user.passwordHash) {
+            return Result.failure(IllegalArgumentException("Incorrect password."))
+        }
+        prefsRepo.setActiveUser(user.uid)
+        ensureDefaultChannelForUser(user)
+        return Result.success(user)
+    }
+
+    suspend fun resetPasswordWithOtp(identifier: String, otp: String, newPassword: String): Result<UserProfileEntity> {
+        val key = identifier.trim().lowercase()
+        if (newPassword.length < 6) {
+            return Result.failure(IllegalArgumentException("New password must be at least 6 characters."))
+        }
+        val pending = pendingOtps[key]
+            ?: return Result.failure(IllegalStateException("Send a verification OTP first."))
+        if (System.currentTimeMillis() > pending.second || pending.first != otp.trim()) {
+            return Result.failure(IllegalArgumentException("Invalid or expired OTP."))
+        }
+        val user = dao.findUserByEmail(key) ?: dao.findUserByPhone(identifier.trim())
+            ?: return Result.failure(IllegalStateException("No matching account found for $identifier."))
+        pendingOtps.remove(key)
+        val updated = user.copy(
+            passwordHash = hashPassword(newPassword, user.uid),
+            authProvider = if (user.authProvider.isBlank()) "Email & Password" else user.authProvider
+        )
+        dao.upsertUser(updated)
+        prefsRepo.setActiveUser(updated.uid)
+        ensureDefaultChannelForUser(updated)
+        return Result.success(updated)
     }
 
     suspend fun updateUserProfile(user: UserProfileEntity) {
@@ -264,7 +471,10 @@ class BharatTubeRepository(
         title: String,
         description: String,
         visibility: VideoVisibility,
-        category: String
+        category: String,
+        hashtags: String? = null,
+        thumbnailKey: String? = null,
+        scheduledAtEpochMs: Long? = null
     ): Result<Unit> {
         val cleanTitle = title.trim()
         if (cleanTitle.isBlank()) {
@@ -277,7 +487,10 @@ class BharatTubeRepository(
                 title = cleanTitle,
                 description = description.trim(),
                 visibility = visibility.name,
-                category = category
+                category = category,
+                hashtags = hashtags?.trim() ?: existing.hashtags,
+                thumbnailKey = thumbnailKey?.takeIf { it.isNotBlank() } ?: existing.thumbnailKey,
+                scheduledAtEpochMs = scheduledAtEpochMs ?: existing.scheduledAtEpochMs
             )
         )
         return Result.success(Unit)
@@ -385,19 +598,55 @@ class BharatTubeRepository(
         dao.updatePlaybackQuality(videoId, quality)
     }
 
-    suspend fun toggleLike(video: VideoEntity) {
+    suspend fun toggleLike(video: VideoEntity, actorName: String = "A viewer") {
         val nextLiked = !video.isLiked
-        val delta = if (nextLiked) 1L else -1L
-        dao.updateVideoLike(video.id, nextLiked, delta)
+        val likeDelta = if (nextLiked) 1L else -1L
+        val clearDislike = nextLiked && video.isDisliked
+        val nextDisliked = if (clearDislike) false else video.isDisliked
+        val dislikeDelta = if (clearDislike) -1L else 0L
+        dao.updateVideoLikeAndDislike(video.id, nextLiked, likeDelta, nextDisliked, dislikeDelta)
+        if (nextLiked) {
+            val channel = dao.getAllChannelsSync().firstOrNull { it.id == video.channelId }
+            if (channel != null) {
+                dao.insertNotification(
+                    NotificationEntity(
+                        id = "notif_${UUID.randomUUID().toString().take(8)}",
+                        userId = channel.ownerUserId,
+                        category = "LIKE",
+                        title = "New Like on '${video.title.take(36)}'",
+                        body = "$actorName liked your video (${video.likeCount + 1} likes)."
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun toggleDislike(video: VideoEntity) {
+        val nextDisliked = !video.isDisliked
+        val dislikeDelta = if (nextDisliked) 1L else -1L
+        val clearLike = nextDisliked && video.isLiked
+        val nextLiked = if (clearLike) false else video.isLiked
+        val likeDelta = if (clearLike) -1L else 0L
+        dao.updateVideoLikeAndDislike(video.id, nextLiked, likeDelta, nextDisliked, dislikeDelta)
     }
 
     suspend fun toggleWatchLater(video: VideoEntity) {
         dao.updateWatchLater(video.id, !video.isWatchLater)
     }
 
-    suspend fun addComment(videoId: String, user: UserProfileEntity, text: String, parentCommentId: String? = null) {
-        if (user.commentRestricted || user.isBanned) return
-        if (text.isBlank()) return
+    suspend fun addComment(videoId: String, user: UserProfileEntity, text: String, parentCommentId: String? = null): Result<Unit> {
+        if (user.commentRestricted || user.isBanned) {
+            return Result.failure(IllegalStateException("Your account is restricted from commenting."))
+        }
+        val clean = text.trim()
+        if (clean.isBlank()) {
+            return Result.failure(IllegalArgumentException("Enter a comment first."))
+        }
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        val moderation = ChhotuUploadModerator.moderateComment(clean, settings.chhotuAiStrictMode)
+        if (!moderation.allowed) {
+            return Result.failure(IllegalStateException(moderation.reason))
+        }
         dao.insertComment(
             CommentEntity(
                 id = "cmt_${UUID.randomUUID().toString().take(8)}",
@@ -405,10 +654,54 @@ class BharatTubeRepository(
                 parentCommentId = parentCommentId,
                 authorUserId = user.uid,
                 authorName = user.username,
-                text = text.trim(),
+                text = clean,
                 originalLanguage = user.languageCode
             )
         )
+        val video = dao.getVideo(videoId)
+        val channel = video?.let { v -> dao.getAllChannelsSync().firstOrNull { it.id == v.channelId } }
+        if (video != null && channel != null && channel.ownerUserId != user.uid) {
+            dao.insertNotification(
+                NotificationEntity(
+                    id = "notif_${UUID.randomUUID().toString().take(8)}",
+                    userId = channel.ownerUserId,
+                    category = "COMMENT",
+                    title = "${user.username} commented on '${video.title.take(30)}'",
+                    body = clean.take(120)
+                )
+            )
+        }
+        return Result.success(Unit)
+    }
+
+    private suspend fun canModerateVideoComments(actor: UserProfileEntity, video: VideoEntity): Boolean {
+        if (actor.isAdmin) return true
+        val channel = dao.getAllChannelsSync().firstOrNull { it.id == video.channelId }
+        return channel?.ownerUserId == actor.uid
+    }
+
+    suspend fun togglePinComment(actor: UserProfileEntity, video: VideoEntity, comment: CommentEntity): Result<Unit> {
+        if (!canModerateVideoComments(actor, video)) {
+            return Result.failure(SecurityException("Only Owner or channel creator can pin comments."))
+        }
+        dao.updateCommentModeration(comment.id, isPinned = !comment.isPinned, isHidden = comment.isHidden)
+        return Result.success(Unit)
+    }
+
+    suspend fun toggleHideComment(actor: UserProfileEntity, video: VideoEntity, comment: CommentEntity): Result<Unit> {
+        if (!canModerateVideoComments(actor, video)) {
+            return Result.failure(SecurityException("Only Owner or channel creator can hide comments."))
+        }
+        dao.updateCommentModeration(comment.id, isPinned = comment.isPinned, isHidden = !comment.isHidden)
+        return Result.success(Unit)
+    }
+
+    suspend fun deleteComment(actor: UserProfileEntity, video: VideoEntity, comment: CommentEntity): Result<Unit> {
+        if (!canModerateVideoComments(actor, video) && comment.authorUserId != actor.uid) {
+            return Result.failure(SecurityException("Only Owner or channel creator can delete this comment."))
+        }
+        dao.deleteComment(comment.id)
+        return Result.success(Unit)
     }
 
     suspend fun likeComment(commentId: String) = dao.likeComment(commentId)
@@ -430,6 +723,10 @@ class BharatTubeRepository(
 
     suspend fun addVideoToPlaylist(playlistId: String, videoId: String) {
         dao.addVideoToPlaylist(PlaylistVideoCrossRef(playlistId, videoId))
+    }
+
+    suspend fun removeVideoFromPlaylist(playlistId: String, videoId: String) {
+        dao.removeVideoFromPlaylist(playlistId, videoId)
     }
 
     suspend fun clearWatchHistory(userId: String) = dao.clearWatchHistory(userId)
@@ -869,6 +1166,15 @@ class BharatTubeRepository(
             createdAt = System.currentTimeMillis()
         )
         dao.upsertVideo(liveVideo)
+        dao.insertNotification(
+            NotificationEntity(
+                id = "notif_${UUID.randomUUID().toString().take(8)}",
+                userId = user.uid,
+                category = "LIVE",
+                title = "Live Started: $cleanTitle",
+                body = "${channel.name} is now LIVE on BharatTube!"
+            )
+        )
         return Result.success(liveVideo)
     }
 
@@ -1223,6 +1529,62 @@ class BharatTubeRepository(
                 details = "Visibility & work boost updated for ${target.handle}",
                 previousValue = "boost=${target.boostPercent}%",
                 newValue = "boost=$clamped%"
+            )
+        )
+    }
+
+    suspend fun setChannelVerified(admin: UserProfileEntity, channel: ChannelEntity, verified: Boolean) {
+        if (!admin.isAdmin) return
+        dao.updateChannelVerification(channel.id, verified)
+        dao.insertNotification(
+            NotificationEntity(
+                id = "notif_${UUID.randomUUID().toString().take(8)}",
+                userId = channel.ownerUserId,
+                category = "CHANNEL",
+                title = if (verified) "Blue Tick Verified: ${channel.name}" else "Verification Removed: ${channel.name}",
+                body = if (verified) {
+                    "Congratulations! Owner Control Center granted a verified Blue Tick badge to ${channel.handle}."
+                } else {
+                    "Your channel verification badge was updated by Owner Control Center."
+                }
+            )
+        )
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = if (verified) "CHANNEL_VERIFIED" else "CHANNEL_UNVERIFIED",
+                details = "Blue Tick ${if (verified) "granted" else "removed"} for ${channel.name} (${channel.handle})",
+                previousValue = "verified=${channel.isVerified}",
+                newValue = "verified=$verified"
+            )
+        )
+    }
+
+    suspend fun setChannelMonetization(admin: UserProfileEntity, channel: ChannelEntity, enabled: Boolean) {
+        if (!admin.isAdmin) return
+        dao.updateChannelMonetization(channel.id, enabled)
+        dao.insertNotification(
+            NotificationEntity(
+                id = "notif_${UUID.randomUUID().toString().take(8)}",
+                userId = channel.ownerUserId,
+                category = "EARNINGS",
+                title = if (enabled) "Monetization Enabled: ${channel.name}" else "Monetization Paused: ${channel.name}",
+                body = if (enabled) {
+                    "Your channel monetization is now ON. Keep creating on BharatTube!"
+                } else {
+                    "Channel monetization was paused by Owner Control Center."
+                }
+            )
+        )
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = "CHANNEL_MONETIZATION_TOGGLED",
+                details = "Monetization ${if (enabled) "ON" else "OFF"} for ${channel.name} (${channel.handle})",
+                previousValue = "monetization=${channel.monetizationEnabled}",
+                newValue = "monetization=$enabled"
             )
         )
     }
