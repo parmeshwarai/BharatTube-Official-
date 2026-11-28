@@ -2,6 +2,8 @@ package com.example.ads
 
 import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +54,10 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object AdMobIds {
     const val APP_ID = "ca-app-pub-8067096612618404~6306798058"
@@ -62,35 +68,48 @@ object AdMobIds {
 class AdMobInterstitialController(private val appContext: Context) {
     private var interstitialAd: InterstitialAd? = null
     private var isLoading: Boolean = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun initializeAndPreload() {
-        MobileAds.initialize(appContext) {
-            preloadInterstitial()
+        initScope.launch {
+            runCatching {
+                MobileAds.initialize(appContext) {
+                    mainHandler.post { preloadInterstitial() }
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "MobileAds initialization skipped: ${error.message}")
+            }
         }
     }
 
     fun preloadInterstitial() {
         if (interstitialAd != null || isLoading) return
         isLoading = true
-        val adRequest = AdRequest.Builder().build()
-        InterstitialAd.load(
-            appContext,
-            AdMobIds.INTERSTITIAL_UNIT_ID,
-            adRequest,
-            object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(ad: InterstitialAd) {
-                    interstitialAd = ad
-                    isLoading = false
-                    Log.d(TAG, "AdMob interstitial loaded.")
-                }
+        runCatching {
+            val adRequest = AdRequest.Builder().build()
+            InterstitialAd.load(
+                appContext,
+                AdMobIds.INTERSTITIAL_UNIT_ID,
+                adRequest,
+                object : InterstitialAdLoadCallback() {
+                    override fun onAdLoaded(ad: InterstitialAd) {
+                        interstitialAd = ad
+                        isLoading = false
+                        Log.d(TAG, "AdMob interstitial loaded.")
+                    }
 
-                override fun onAdFailedToLoad(error: LoadAdError) {
-                    interstitialAd = null
-                    isLoading = false
-                    Log.w(TAG, "AdMob interstitial failed to load: ${error.message}")
+                    override fun onAdFailedToLoad(error: LoadAdError) {
+                        interstitialAd = null
+                        isLoading = false
+                        Log.w(TAG, "AdMob interstitial failed to load: ${error.message}")
+                    }
                 }
-            }
-        )
+            )
+        }.onFailure { error ->
+            isLoading = false
+            Log.w(TAG, "AdMob interstitial load threw: ${error.message}")
+        }
     }
 
     fun showThenProceed(activity: Activity?, onProceed: () -> Unit) {
@@ -119,7 +138,13 @@ class AdMobInterstitialController(private val appContext: Context) {
                 interstitialAd = null
             }
         }
-        currentAd.show(activity)
+        runCatching {
+            currentAd.show(activity)
+        }.onFailure { error ->
+            Log.w(TAG, "AdMob interstitial show failed: ${error.message}")
+            interstitialAd = null
+            onProceed()
+        }
     }
 
     private companion object {
@@ -134,41 +159,47 @@ fun AdMobBannerAd(
 ) {
     val context = LocalContext.current
     val adView = remember(adUnitId) {
-        AdView(context).apply {
-            setAdSize(AdSize.BANNER)
-            this.adUnitId = adUnitId
-            adListener = object : AdListener() {
-                override fun onAdFailedToLoad(error: LoadAdError) {
-                    Log.w("AdMobBanner", "Banner failed to load: ${error.message}")
+        runCatching {
+            AdView(context).apply {
+                setAdSize(AdSize.BANNER)
+                this.adUnitId = adUnitId
+                adListener = object : AdListener() {
+                    override fun onAdFailedToLoad(error: LoadAdError) {
+                        Log.w("AdMobBanner", "Banner failed to load: ${error.message}")
+                    }
                 }
+                loadAd(AdRequest.Builder().build())
             }
-            loadAd(AdRequest.Builder().build())
-        }
+        }.onFailure { error ->
+            Log.w("AdMobBanner", "AdView unavailable: ${error.message}")
+        }.getOrNull()
     }
 
     DisposableEffect(adView) {
         onDispose {
-            adView.destroy()
+            runCatching { adView?.destroy() }
         }
     }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("home_admob_banner")
-    ) {
-        Box(
-            modifier = Modifier
+    if (adView != null) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            modifier = modifier
                 .fillMaxWidth()
-                .heightIn(min = 50.dp),
-            contentAlignment = Alignment.Center
+                .testTag("home_admob_banner")
         ) {
-            AndroidView(
-                factory = { adView },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 50.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AndroidView(
+                    factory = { adView },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
@@ -188,16 +219,20 @@ fun LongVideoAdOverlay(
         is ActivePlayerAd.MidRoll -> "midroll_${activeAd.cueSeconds}"
     }
     val adView = remember(adKey) {
-        AdView(context).apply {
-            setAdSize(AdSize.BANNER)
-            adUnitId = AdMobIds.BANNER_UNIT_ID
-            loadAd(AdRequest.Builder().build())
-        }
+        runCatching {
+            AdView(context).apply {
+                setAdSize(AdSize.BANNER)
+                adUnitId = AdMobIds.BANNER_UNIT_ID
+                loadAd(AdRequest.Builder().build())
+            }
+        }.onFailure { error ->
+            Log.w("LongVideoAdOverlay", "AdView unavailable: ${error.message}")
+        }.getOrNull()
     }
 
     DisposableEffect(adView) {
         onDispose {
-            adView.destroy()
+            runCatching { adView?.destroy() }
         }
     }
 
@@ -285,10 +320,18 @@ fun LongVideoAdOverlay(
                             .padding(vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        AndroidView(
-                            factory = { adView },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        if (adView != null) {
+                            AndroidView(
+                                factory = { adView },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(
+                                text = "Sponsored Break • BharatTube",
+                                color = Color.White.copy(alpha = 0.85f),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
                     }
                 }
                 Text(
