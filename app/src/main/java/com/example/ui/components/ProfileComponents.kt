@@ -163,6 +163,46 @@ fun ChannelLogoAvatar(
 }
 
 @Composable
+fun OwnerCrownControlIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = com.example.ui.theme.AmberGold
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+
+        // Golden Crown sitting atop a control ring
+        val crownPath = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.24f, h * 0.44f)
+            lineTo(w * 0.20f, h * 0.16f)
+            lineTo(w * 0.38f, h * 0.30f)
+            lineTo(cx, h * 0.10f)
+            lineTo(w * 0.62f, h * 0.30f)
+            lineTo(w * 0.80f, h * 0.16f)
+            lineTo(w * 0.76f, h * 0.44f)
+            close()
+        }
+        drawPath(crownPath, color = tint)
+
+        // Small crown base band + control gear ring below
+        val cy = h * 0.68f
+        val r = w * 0.22f
+        drawCircle(
+            color = tint,
+            radius = r,
+            center = androidx.compose.ui.geometry.Offset(cx, cy),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.08f)
+        )
+        drawCircle(
+            color = tint,
+            radius = w * 0.07f,
+            center = androidx.compose.ui.geometry.Offset(cx, cy)
+        )
+    }
+}
+
+@Composable
 fun SwitchOrCreateAccountDialog(
     currentUser: UserProfileEntity?,
     allUsers: List<UserProfileEntity>,

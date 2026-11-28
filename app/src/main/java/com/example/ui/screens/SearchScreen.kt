@@ -60,6 +60,9 @@ fun SearchScreen(
     videos: List<VideoEntity>,
     channels: List<ChannelEntity>,
     history: List<SearchHistoryEntity>,
+    boostedUserIds: Map<String, Int> = emptyMap(),
+    searchBoostEnabled: Boolean = true,
+    workBoostPercent: Int = 30,
     onBack: () -> Unit,
     onRecordSearch: (String) -> Unit,
     onClearHistory: () -> Unit,
@@ -71,6 +74,7 @@ fun SearchScreen(
     var query by remember { mutableStateOf("") }
     var sortByPopular by remember { mutableStateOf(false) }
     var filterLang by remember { mutableStateOf("ALL") }
+    val channelOwnerMap = remember(channels) { channels.associate { it.id to it.ownerUserId } }
 
     val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -91,7 +95,7 @@ fun SearchScreen(
         }
     }
 
-    val matchingVideos = remember(videos, query, sortByPopular, filterLang) {
+    val matchingVideos = remember(videos, query, sortByPopular, filterLang, boostedUserIds, searchBoostEnabled, workBoostPercent, channelOwnerMap) {
         videos.filter { v ->
             val qMatch = query.isBlank() ||
                 v.title.contains(query, ignoreCase = true) ||
@@ -101,8 +105,21 @@ fun SearchScreen(
             val lMatch = filterLang == "ALL" || v.languageCode == filterLang
             qMatch && lMatch
         }.let { list ->
-            if (sortByPopular) list.sortedByDescending { it.viewCount }
-            else list.sortedByDescending { it.createdAt }
+            if (sortByPopular) {
+                list.sortedByDescending { v ->
+                    val ownerId = channelOwnerMap[v.channelId]
+                    val userBoost = if (searchBoostEnabled) (boostedUserIds[ownerId] ?: 0) else 0
+                    val mult = 1.0 + ((userBoost + if (userBoost > 0 && searchBoostEnabled) workBoostPercent else 0) / 100.0)
+                    v.viewCount * mult
+                }
+            } else {
+                list.sortedByDescending { v ->
+                    val ownerId = channelOwnerMap[v.channelId]
+                    val userBoost = if (searchBoostEnabled) (boostedUserIds[ownerId] ?: 0) else 0
+                    val boostBonusMs = if (userBoost > 0 && searchBoostEnabled) (userBoost + workBoostPercent) * 3_600_000L else 0L
+                    v.createdAt + boostBonusMs
+                }
+            }
         }
     }
 

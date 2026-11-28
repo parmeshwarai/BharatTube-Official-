@@ -138,6 +138,21 @@ object BharatTubeCatalog {
         )
     }
 
+    fun calculateCreatorEarningsInr(
+        viewCount: Long,
+        netRevenueInr: Double,
+        creatorSharePct: Int,
+        per1000ViewsPaymentInr: Double,
+        bonusPercent: Int,
+        userBoostPct: Int = 0
+    ): Double {
+        val cpmPool = (viewCount.coerceAtLeast(0L) / 1000.0) * per1000ViewsPaymentInr.coerceAtLeast(0.0)
+        val combinedPool = cpmPool + netRevenueInr.coerceAtLeast(0.0)
+        val creatorBase = combinedPool * (creatorSharePct.coerceIn(0, 100) / 100.0)
+        val totalBonusPct = (bonusPercent.coerceAtLeast(0) + (userBoostPct.coerceAtLeast(0) / 5)).coerceAtMost(200)
+        return creatorBase * (1.0 + totalBonusPct / 100.0)
+    }
+
     fun formatCurrency(amountInr: Double, countryCode: String): String {
         val country = countries.firstOrNull { it.code == countryCode } ?: countries.first()
         val converted = amountInr * country.exchangeRateFromInr

@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,26 +29,33 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddBusiness
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
@@ -62,7 +72,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,10 +91,14 @@ import com.example.data.model.VideoVisibility
 import com.example.ui.components.BharatTubeLogoMark
 import com.example.ui.components.BharatTubeThumbnail
 import com.example.ui.components.ChannelLogoAvatar
+import com.example.ui.components.OwnerCrownControlIcon
 import com.example.ui.components.ProfileFormatters
 import com.example.ui.components.SwitchOrCreateAccountDialog
+import com.example.ui.theme.AmberGold
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
+import java.text.NumberFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,6 +117,7 @@ fun ProfileScreen(
     onOpenAbout: (String) -> Unit,
     onOpenProfileMenu: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenOwnerControlCenter: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenChhotuAi: () -> Unit,
     onOpenVideo: (VideoEntity) -> Unit,
@@ -109,6 +127,8 @@ fun ProfileScreen(
     onCreateLocalAccount: (String, String, String, String, String, Boolean) -> Unit,
     onSignInBack: (String?) -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var showSwitchDialog by remember { mutableStateOf(false) }
 
@@ -150,6 +170,15 @@ fun ProfileScreen(
                 }
             },
             actions = {
+                // Strictly visible ONLY to Owner / Admin account — hidden from all normal users
+                if (user?.isAdmin == true && !prefs.isSignedOut) {
+                    IconButton(
+                        onClick = onOpenOwnerControlCenter,
+                        modifier = Modifier.testTag("profile_owner_crown_button")
+                    ) {
+                        OwnerCrownControlIcon(tint = AmberGold)
+                    }
+                }
                 IconButton(
                     onClick = onOpenChhotuAi,
                     modifier = Modifier.testTag("profile_chhotu_button")
@@ -366,7 +395,31 @@ fun ProfileScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(Modifier.height(2.dp))
+                                val channelUrl = "bharattube.com/${activeChannel.handle}"
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable {
+                                            clipboard.setText(AnnotatedString("https://$channelUrl"))
+                                            Toast.makeText(context, "Channel URL copied!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = channelUrl,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = SaffronFlame,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Filled.ContentCopy,
+                                        contentDescription = "Copy Channel URL",
+                                        tint = SaffronFlame,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
                                 Text(
                                     text = "${BharatTubeCatalog.formatCompactCount(activeChannel.subscriberCount)} subscribers • ${channelVideos.size} videos",
                                     style = MaterialTheme.typography.bodySmall,
@@ -474,13 +527,14 @@ fun ProfileScreen(
                     }
                 }
 
-                // 3. Tabs: Videos, Shorts, Live, Playlists
+                // 3. Tabs: Videos, Shorts, Live, Playlists, About
                 item {
-                    val tabs = listOf("Videos", "Shorts", "Live", "Playlists")
-                    TabRow(
+                    val tabs = listOf("Videos", "Shorts", "Live", "Playlists", "About")
+                    ScrollableTabRow(
                         selectedTabIndex = selectedTab,
                         containerColor = Color(0xFF14161F),
                         contentColor = Color.White,
+                        edgePadding = 12.dp,
                         indicator = { tabPositions ->
                             if (selectedTab < tabPositions.size) {
                                 TabRowDefaults.SecondaryIndicator(
@@ -499,7 +553,8 @@ fun ProfileScreen(
                                     Text(
                                         text = title,
                                         fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (selectedTab == index) Color.White else Color(0xFF8B91A6)
+                                        color = if (selectedTab == index) Color.White else Color(0xFF8B91A6),
+                                        maxLines = 1
                                     )
                                 },
                                 modifier = Modifier.testTag("profile_tab_${title.lowercase()}")
@@ -510,7 +565,108 @@ fun ProfileScreen(
                 }
 
                 // 4. Tab Content
-                if (selectedTab == 3) {
+                if (selectedTab == 4) {
+                    // Inline About Tab
+                    item {
+                        val totalChannelViews = channelVideos.sumOf { it.viewCount }
+                        val formattedViews = NumberFormat.getNumberInstance(Locale.US).format(totalChannelViews)
+                        val joinedDate = ProfileFormatters.formatJoinedDate(activeChannel.createdAt)
+                        val countryName = BharatTubeCatalog.countries.firstOrNull { it.code == prefs.preferredCountry }?.name ?: "India"
+                        val channelUrl = "https://bharattube.com/${activeChannel.handle}"
+                        val parsedLinks = ProfileFormatters.parseSocialLinks(activeChannel.socialLinks)
+
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF171923),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .testTag("profile_inline_about_card")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Description", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = activeChannel.description.ifBlank {
+                                                "${activeChannel.name} creates original videos, Shorts, and live streams on BharatTube."
+                                            },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color(0xFFD5D9E6)
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.CalendarToday, contentDescription = null, tint = Color(0xFFA0A5B8), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("Joined $joinedDate", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.Visibility, contentDescription = null, tint = Color(0xFFA0A5B8), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("$formattedViews total views", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = Color(0xFFA0A5B8), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("Location • $countryName", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                                }
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                Text("Channel URL & Links", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                                Surface(
+                                    onClick = {
+                                        clipboard.setText(AnnotatedString(channelUrl))
+                                        Toast.makeText(context, "Channel URL copied!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFF232632),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(channelUrl, color = SaffronFlame, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy URL", tint = Color.White, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                parsedLinks.forEach { link ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                val safeUrl = if (link.url.startsWith("http")) link.url else "https://${link.url}"
+                                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl))) }
+                                            }
+                                            .padding(vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (link.label.contains("Website", true)) Icons.Filled.Language else Icons.Filled.Public,
+                                            contentDescription = link.label,
+                                            tint = Color(0xFFA0A5B8),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Text("${link.label} • ${link.url}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF7FA6FF), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = { onOpenAbout(activeChannel.id) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Open Full About & Report", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                } else if (selectedTab == 3) {
                     // Playlists Tab
                     item {
                         Row(

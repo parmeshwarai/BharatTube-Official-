@@ -8,19 +8,39 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -34,8 +54,10 @@ import com.example.ads.AdMobInterstitialController
 import com.example.data.model.VideoEntity
 import com.example.ui.components.BharatTab
 import com.example.ui.components.BharatTubeBottomBar
+import com.example.ui.components.BharatTubeLogoMark
 import com.example.ui.components.BharatTubeTopBar
 import com.example.ui.components.CreateOptionsBottomSheet
+import com.example.ui.components.SwitchOrCreateAccountDialog
 import com.example.ui.screens.AboutChannelScreen
 import com.example.ui.screens.AdvertiserScreen
 import com.example.ui.screens.CameraCaptureMode
@@ -66,7 +88,9 @@ import com.example.ui.screens.UploadDetailsScreen
 import com.example.ui.screens.UploadScreen
 import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.screens.YourVideosScreen
+import com.example.ui.theme.AmberGold
 import com.example.ui.theme.BharatTubeTheme
+import com.example.ui.theme.SaffronFlame
 import com.example.ui.viewmodel.BharatTubeViewModel
 
 class MainActivity : ComponentActivity() {
@@ -167,6 +191,9 @@ fun BharatTubeApp(
     }
 
     var showCreateSheet by remember { mutableStateOf(false) }
+    var showMaintenanceAccountDialog by remember { mutableStateOf(false) }
+    val boostedUserIds = remember(allUsers) { allUsers.associate { it.uid to it.boostPercent } }
+    val isAppBlockedForNonOwner = (!settings.appEnabled || settings.maintenanceMode) && currentUser?.isAdmin != true
 
     val topLevelRoutes = setOf(
         BharatTab.HOME.route,
@@ -328,6 +355,9 @@ fun BharatTubeApp(
                         channels = allChannels,
                         currentCountry = prefs.preferredCountry,
                         currentLanguage = prefs.preferredLanguage,
+                        boostedUserIds = boostedUserIds,
+                        trendingBoostEnabled = settings.trendingBoostEnabled,
+                        workBoostPercent = settings.workBoostPercent,
                         onSelectCountry = viewModel::setCountry,
                         onSelectLanguage = viewModel::setLanguage,
                         onOpenVideo = openVideoWithAd,
@@ -399,6 +429,7 @@ fun BharatTubeApp(
                         onOpenAbout = { chId -> navController.navigate("about_channel/$chId") },
                         onOpenProfileMenu = { navController.navigate("profile_menu") },
                         onOpenSettings = { navController.navigate("settings") },
+                        onOpenOwnerControlCenter = { navController.navigate("admin") },
                         onOpenSearch = { navController.navigate("search") },
                         onOpenChhotuAi = { navController.navigate("chhotu_ai") },
                         onOpenVideo = openVideoWithAd,
@@ -492,7 +523,9 @@ fun BharatTubeApp(
                 composable("settings") {
                     SettingsScreen(
                         onBack = { navController.popBackStack() },
-                        onOpenSection = { section -> navController.navigate("settings/$section") }
+                        onOpenSection = { section -> navController.navigate("settings/$section") },
+                        onOpenSupport = { navController.navigate("support") },
+                        onSignOut = viewModel::signOut
                     )
                 }
 
@@ -636,7 +669,8 @@ fun BharatTubeApp(
                         settings = settings,
                         countryCode = prefs.preferredCountry,
                         onBack = { navController.popBackStack() },
-                        onInitiatePayout = viewModel::initiatePayout
+                        onInitiatePayout = viewModel::initiatePayout,
+                        onSavePayoutMethod = viewModel::updatePayoutMethodDetails
                     )
                 }
 
@@ -654,6 +688,12 @@ fun BharatTubeApp(
                         onOpenChhotuAdmin = { navController.navigate("chhotu_admin") },
                         onUpdateSettings = viewModel::updatePlatformSettings,
                         onModerateUser = viewModel::moderateUser,
+                        onWarnUser = viewModel::warnUser,
+                        onBlockUser = viewModel::blockUserEngagement,
+                        onLimitUser = viewModel::limitUserWork,
+                        onBoostUser = viewModel::boostUserWork,
+                        onTriggerAutoPayoutSweep = viewModel::triggerAutoPayoutSweep,
+                        onUpdatePayoutStatus = viewModel::updatePayoutStatus,
                         onResolveReport = viewModel::resolveReport
                     )
                 }
@@ -710,6 +750,9 @@ fun BharatTubeApp(
                         videos = allVideos,
                         channels = allChannels,
                         history = searchHistory,
+                        boostedUserIds = boostedUserIds,
+                        searchBoostEnabled = settings.searchBoostEnabled,
+                        workBoostPercent = settings.workBoostPercent,
                         onBack = { navController.popBackStack() },
                         onRecordSearch = viewModel::recordSearch,
                         onClearHistory = viewModel::clearSearchHistory,
@@ -773,6 +816,72 @@ fun BharatTubeApp(
                 }
             }
         }
+    }
+
+    if (isAppBlockedForNonOwner) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0E1016))
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color(0xFF151822),
+                border = BorderStroke(1.dp, AmberGold.copy(alpha = 0.45f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("app_maintenance_overlay")
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    BharatTubeLogoMark(modifier = Modifier.size(56.dp))
+                    Text(
+                        text = if (!settings.appEnabled) "BharatTube is Currently Paused" else "Maintenance Mode Active",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = if (!settings.appEnabled) {
+                            "The BharatTube platform is temporarily turned off by the Owner. Please check back shortly."
+                        } else {
+                            "We are performing scheduled upgrades to BharatTube. Normal access will resume soon."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFA0A5B8),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Button(
+                        onClick = { showMaintenanceAccountDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("maintenance_switch_account_button")
+                    ) {
+                        Text("Owner / Switch Account", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showMaintenanceAccountDialog) {
+        SwitchOrCreateAccountDialog(
+            currentUser = currentUser,
+            allUsers = allUsers,
+            defaultCountry = prefs.preferredCountry,
+            defaultLanguage = prefs.preferredLanguage,
+            onDismiss = { showMaintenanceAccountDialog = false },
+            onSwitchUser = viewModel::switchUser,
+            onCreateLocalAccount = viewModel::createLocalAccount
+        )
     }
 
     if (showCreateSheet) {

@@ -52,7 +52,7 @@ import com.example.data.model.WatchHistoryEntity
         ChhotuChatMessageEntity::class,
         ChhotuErrorReportEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class BharatTubeDatabase : RoomDatabase() {
@@ -113,6 +113,32 @@ abstract class BharatTubeDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE users ADD COLUMN warningCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE users ADD COLUMN lastWarningReason TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE users ADD COLUMN boostPercent INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE users ADD COLUMN workLimited INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE users ADD COLUMN preferredPayoutMethod TEXT NOT NULL DEFAULT 'UPI'")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN appEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN maintenanceMode INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN brandControlEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN homePageControlEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN profileControlEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN privacyControlEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN per1000ViewsPaymentInr REAL NOT NULL DEFAULT 120.0")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN bonusPercent INTEGER NOT NULL DEFAULT 15")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN workBoostPercent INTEGER NOT NULL DEFAULT 30")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN dailyVideoUploadLimit INTEGER NOT NULL DEFAULT 10")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN dailyShortsUploadLimit INTEGER NOT NULL DEFAULT 25")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN dailyLiveLimit INTEGER NOT NULL DEFAULT 5")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN homePageBoostEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN trendingBoostEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE platform_settings ADD COLUMN searchBoostEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("UPDATE platform_settings SET indiaPayoutThresholdInr = 2000.0 WHERE id = 1 AND indiaPayoutThresholdInr = 1000.0")
+            }
+        }
+
         fun getInstance(context: Context): BharatTubeDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -120,7 +146,7 @@ abstract class BharatTubeDatabase : RoomDatabase() {
                     BharatTubeDatabase::class.java,
                     "bharattube_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }
@@ -181,6 +207,8 @@ object SeedDataPopulator {
                 bio = "Documenting mountain trails across India and Asia in 4K.",
                 countryCode = "IN",
                 languageCode = "hi",
+                preferredPayoutMethod = "BANK_TRANSFER",
+                bankAccountMasked = "SBI •••• 7734",
                 createdAt = now - 86_400_000L * 15
             )
         )
@@ -488,8 +516,8 @@ object SeedDataPopulator {
                 id = "notif_1",
                 userId = "user_founder",
                 category = "EARNINGS",
-                title = "50/50 Creator Revenue Credited",
-                body = "Your channel earned ₹1,240.00 net share (50% of ₹2,480.00 eligible ad revenue). Eligible for ₹1,000 India payout!",
+                title = "Creator Revenue Credited",
+                body = "Your channel earned new ad & view revenue. Minimum automatic payout threshold: ₹2,000.",
                 createdAt = now - 900_000L
             )
         )
@@ -548,15 +576,43 @@ object SeedDataPopulator {
             )
         )
 
+        // Seeded Payout History (UPI Paid + Bank Account Pending)
+        dao.upsertPayout(
+            PayoutEntity(
+                id = "pay_seed_1",
+                channelId = "ch_bharattube_tech",
+                userId = "user_founder",
+                amountInr = 2450.0,
+                method = "UPI",
+                destinationMasked = "aarav@okaxis",
+                transactionId = "BT-AUTO-882410",
+                status = "CONFIRMED",
+                createdAt = now - 86_400_000L * 3
+            )
+        )
+        dao.upsertPayout(
+            PayoutEntity(
+                id = "pay_seed_2",
+                channelId = "ch_indie_waves",
+                userId = "user_priya",
+                amountInr = 3200.0,
+                method = "BANK_TRANSFER",
+                destinationMasked = "ICICI •••• 1940",
+                transactionId = "BT-AUTO-904512",
+                status = "INITIATED",
+                createdAt = now - 86_400_000L
+            )
+        )
+
         // Audit Log
         dao.insertAuditLog(
             AuditLogEntity(
                 id = "audit_init",
                 actorId = "system_policy",
                 action = "INITIALIZE_REVENUE_POLICY",
-                details = "Default global revenue share set to 50% Creator / 50% BharatTube; India minimum payout ₹1,000.",
+                details = "Default global revenue share set to 50% Creator / 50% BharatTube; minimum auto-payout ₹2,000.",
                 previousValue = "N/A",
-                newValue = "50:50 | IN_MIN=1000",
+                newValue = "50:50 | IN_MIN=2000",
                 createdAt = now - 86_400_000L
             )
         )

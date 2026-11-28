@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ChevronRight
@@ -87,9 +88,12 @@ private data class SettingsCategoryItem(
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onOpenSection: (String) -> Unit
+    onOpenSection: (String) -> Unit,
+    onOpenSupport: () -> Unit,
+    onSignOut: () -> Unit
 ) {
     var showAppShareSheet by remember { mutableStateOf(false) }
+    var confirmSignOut by remember { mutableStateOf(false) }
 
     val categories = remember {
         listOf(
@@ -144,6 +148,59 @@ fun SettingsScreen(
                 )
             }
 
+            item {
+                SettingsCategoryRow(
+                    icon = Icons.AutoMirrored.Filled.HelpOutline,
+                    title = "Help and Feedback",
+                    tag = "settings_item_help_feedback",
+                    onClick = onOpenSupport
+                )
+                HorizontalDivider(
+                    color = Color.White.copy(alpha = 0.06f),
+                    thickness = 0.8.dp
+                )
+            }
+
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { confirmSignOut = true }
+                        .padding(vertical = 15.dp)
+                        .testTag("settings_item_sign_out"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LotusCoral.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Sign Out",
+                            tint = LotusCoral,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        text = "Sign Out",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = LotusCoral,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = Color(0xFF8B91A6),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
             // Very bottom of Settings: App Share
             item {
                 Spacer(Modifier.height(14.dp))
@@ -187,8 +244,30 @@ fun SettingsScreen(
                         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Color(0xFF8B91A6))
                     }
                 }
+                Spacer(Modifier.height(16.dp))
             }
         }
+    }
+
+    if (confirmSignOut) {
+        AlertDialog(
+            onDismissRequest = { confirmSignOut = false },
+            title = { Text("Sign Out of BharatTube?") },
+            text = { Text("You can sign back in or switch accounts anytime from Profile.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmSignOut = false
+                        onSignOut()
+                        onBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LotusCoral)
+                ) { Text("Sign Out") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showAppShareSheet) {

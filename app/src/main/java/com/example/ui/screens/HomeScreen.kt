@@ -115,56 +115,58 @@ fun HomeScreen(
             }
         }
 
-        // Hero Spotlight Banner
-        item {
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .fillMaxWidth()
-                    .height(168.dp)
-                    .clip(RoundedCornerShape(20.dp))
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.img_hero_creators),
-                    contentDescription = "BharatTube Creators Spotlight",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+        // Hero Spotlight Banner (controlled by Owner Home Page Control, ON by default)
+        if (settings.homePageControlEnabled) {
+            item {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xE60B0D16), Color(0x880B0D16), Color.Transparent)
-                            )
-                        )
-                )
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(18.dp)
-                        .fillMaxWidth(0.75f)
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .height(168.dp)
+                        .clip(RoundedCornerShape(20.dp))
                 ) {
-                    Text(
-                        text = "CREATOR SPOTLIGHT • $countryCode FEED",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = SaffronFlame
+                    Image(
+                        painter = painterResource(id = R.drawable.img_hero_creators),
+                        contentDescription = "BharatTube Creators Spotlight",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Create Your Channel & Reach Global Audiences",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xE60B0D16), Color(0x880B0D16), Color.Transparent)
+                                )
+                            )
                     )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = onOpenCreateChannel,
-                        colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        modifier = Modifier.testTag("hero_create_channel_button")
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(18.dp)
+                            .fillMaxWidth(0.75f)
                     ) {
-                        Text("Create Your Channel", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            text = "CREATOR SPOTLIGHT • $countryCode FEED",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = SaffronFlame
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Create Your Channel & Reach Global Audiences",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = onOpenCreateChannel,
+                            colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("hero_create_channel_button")
+                        ) {
+                            Text("Create Your Channel", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
             }

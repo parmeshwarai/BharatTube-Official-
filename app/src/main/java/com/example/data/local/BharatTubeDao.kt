@@ -39,6 +39,9 @@ interface BharatTubeDao {
     @Query("SELECT * FROM users WHERE uid = :uid LIMIT 1")
     suspend fun getUser(uid: String): UserProfileEntity?
 
+    @Query("SELECT * FROM users")
+    suspend fun getAllUsersSync(): List<UserProfileEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertUser(user: UserProfileEntity)
 
@@ -54,6 +57,9 @@ interface BharatTubeDao {
 
     @Query("SELECT * FROM channels WHERE handle = :handle LIMIT 1")
     suspend fun findChannelByHandle(handle: String): ChannelEntity?
+
+    @Query("SELECT * FROM channels")
+    suspend fun getAllChannelsSync(): List<ChannelEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertChannel(channel: ChannelEntity)
@@ -76,6 +82,12 @@ interface BharatTubeDao {
 
     @Query("SELECT * FROM videos WHERE id = :videoId LIMIT 1")
     suspend fun getVideo(videoId: String): VideoEntity?
+
+    @Query("SELECT * FROM videos")
+    suspend fun getAllVideosSync(): List<VideoEntity>
+
+    @Query("SELECT COUNT(*) FROM videos WHERE channelId IN (:channelIds) AND format = :format AND createdAt >= :sinceMs")
+    suspend fun countChannelUploadsSince(channelIds: List<String>, format: String, sinceMs: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertVideo(video: VideoEntity)
@@ -186,6 +198,9 @@ interface BharatTubeDao {
 
     @Query("SELECT COUNT(*) FROM payouts WHERE channelId = :channelId AND status IN ('INITIATED', 'PENDING_VERIFICATION')")
     suspend fun countActivePayoutsForChannel(channelId: String): Int
+
+    @Query("SELECT * FROM payouts WHERE channelId = :channelId AND status != 'FAILED'")
+    suspend fun getNonFailedPayoutsForChannelSync(channelId: String): List<PayoutEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPayout(payout: PayoutEntity)

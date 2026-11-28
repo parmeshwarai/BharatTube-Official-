@@ -93,8 +93,11 @@ class BharatTubeViewModel(
         },
         combine(watchHistory, preferences, selectedCategory) { history, prefs, category ->
             Triple(history, prefs, category)
+        },
+        combine(allUsers, platformSettings) { users, settings ->
+            users.associate { it.uid to it.boostPercent } to settings
         }
-    ) { (videos, channels, myCh), (history, prefs, category) ->
+    ) { (videos, channels, myCh), (history, prefs, category), (boostMap, settings) ->
         val ranked = repository.rankVideosForUser(
             videos = videos,
             channels = channels,
@@ -102,7 +105,10 @@ class BharatTubeViewModel(
             preferredLanguage = prefs.preferredLanguage,
             preferredCountry = prefs.preferredCountry,
             restrictedMode = prefs.restrictedMode,
-            myChannelIds = myCh.map { it.id }.toSet()
+            myChannelIds = myCh.map { it.id }.toSet(),
+            boostedUserIds = boostMap,
+            homePageBoostEnabled = settings.homePageBoostEnabled,
+            workBoostPercent = settings.workBoostPercent
         )
         if (category == "All") ranked else ranked.filter { it.category == category }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -679,8 +685,42 @@ class BharatTubeViewModel(
         val user = currentUser.value ?: return
         viewModelScope.launch {
             repository.initiatePayout(user, channel, availableBalanceInr, method)
-                .onSuccess { _snackbarMessage.value = "Payout initiated: ${it.transactionId} (awaiting provider confirmation)" }
+                .onSuccess {
+                    val statusWord = if (it.status == "CONFIRMED") "Paid" else "Pending"
+                    _snackbarMessage.value = "Payout $statusWord: ${it.transactionId} (₹${String.format("%.0f", it.amountInr)})"
+                }
                 .onFailure { _snackbarMessage.value = it.message }
+        }
+    }
+
+    fun updatePayoutMethodDetails(method: PayoutMethod, upiId: String, bankMasked: String) {
+        val user = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.updatePayoutMethodDetails(user, method, upiId, bankMasked)
+            _snackbarMessage.value = "Payout method (${method.label}) saved"
+        }
+    }
+
+    fun triggerAutoPayoutSweep() {
+        val admin = currentUser.value ?: return
+        if (!admin.isAdmin) return
+        viewModelScope.launch {
+            val count = repository.runAutoPayoutSweep(admin.uid)
+            _snackbarMessage.value = if (count > 0) {
+                "Auto-Payout processed $count creator payout(s)!"
+            } else {
+                "No creators currently awaiting auto-payout above minimum threshold."
+            }
+        }
+    }
+
+    fun updatePayoutStatus(payout: PayoutEntity, status: com.example.data.model.PayoutStatus) {
+        val admin = currentUser.value ?: return
+        if (!admin.isAdmin) return
+        viewModelScope.launch {
+            repository.updatePayoutStatus(admin, payout, status)
+            val label = if (status == com.example.data.model.PayoutStatus.CONFIRMED) "Paid" else status.name
+            _snackbarMessage.value = "Payout ${payout.transactionId} marked $label"
         }
     }
 
@@ -729,7 +769,7 @@ class BharatTubeViewModel(
         val admin = currentUser.value ?: return
         viewModelScope.launch {
             repository.updatePlatformSettings(admin, updated, actionLabel, details, previousValue, newValue)
-                .onSuccess { _snackbarMessage.value = "Updated: $actionLabel" }
+                .onSuccess { _snackbarMessage.value = "Saved: $actionLabel" }
                 .onFailure { _snackbarMessage.value = it.message }
         }
     }
@@ -738,7 +778,39 @@ class BharatTubeViewModel(
         val admin = currentUser.value ?: return
         viewModelScope.launch {
             repository.moderateUser(admin, target, banned, reason)
-            _snackbarMessage.value = if (banned) "Account ${target.handle} suspended" else "Account ${target.handle} restored"
+            _snackbarMessage.value = if (banned) "Account ${target.handle} banned" else "Account ${target.handle} unbanned"
+        }
+    }
+
+    fun warnUser(target: UserProfileEntity, reason: String) {
+        val admin = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.warnUser(admin, target, reason)
+            _snackbarMessage.value = "Warning sent to ${target.handle}"
+        }
+    }
+
+    fun blockUserEngagement(target: UserProfileEntity, blocked: Boolean, reason: String) {
+        val admin = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.blockUserEngagement(admin, target, blocked, reason)
+            _snackbarMessage.value = if (blocked) "Blocked ${target.handle}" else "Unblocked ${target.handle}"
+        }
+    }
+
+    fun limitUserWork(target: UserProfileEntity, limited: Boolean, reason: String) {
+        val admin = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.limitUserWork(admin, target, limited, reason)
+            _snackbarMessage.value = if (limited) "Upload limit applied to ${target.handle}" else "Removed limit for ${target.handle}"
+        }
+    }
+
+    fun boostUserWork(target: UserProfileEntity, boostPercent: Int) {
+        val admin = currentUser.value ?: return
+        viewModelScope.launch {
+            repository.boostUserWork(admin, target, boostPercent)
+            _snackbarMessage.value = "Boost set to $boostPercent% for ${target.handle}"
         }
     }
 

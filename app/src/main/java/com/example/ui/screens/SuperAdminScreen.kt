@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,16 +11,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,13 +40,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,15 +64,18 @@ import com.example.data.model.AuditLogEntity
 import com.example.data.model.BharatTubeCatalog
 import com.example.data.model.ChannelEntity
 import com.example.data.model.PayoutEntity
+import com.example.data.model.PayoutStatus
 import com.example.data.model.PlatformSettingsEntity
 import com.example.data.model.ReportEntity
 import com.example.data.model.UserProfileEntity
 import com.example.data.model.VideoEntity
-import com.example.data.model.VideoFormat
+import com.example.ui.components.BharatTubeLogoMark
+import com.example.ui.components.OwnerCrownControlIcon
+import com.example.ui.theme.AmberGold
+import com.example.ui.theme.ElectricCobalt
 import com.example.ui.theme.EmeraldVerified
 import com.example.ui.theme.LotusCoral
 import com.example.ui.theme.SaffronFlame
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,24 +92,42 @@ fun SuperAdminScreen(
     onOpenChhotuAdmin: () -> Unit,
     onUpdateSettings: (PlatformSettingsEntity, String, String, String, String) -> Unit,
     onModerateUser: (UserProfileEntity, Boolean, String) -> Unit,
+    onWarnUser: (UserProfileEntity, String) -> Unit,
+    onBlockUser: (UserProfileEntity, Boolean, String) -> Unit,
+    onLimitUser: (UserProfileEntity, Boolean, String) -> Unit,
+    onBoostUser: (UserProfileEntity, Int) -> Unit,
+    onTriggerAutoPayoutSweep: () -> Unit,
+    onUpdatePayoutStatus: (PayoutEntity, PayoutStatus) -> Unit,
     onResolveReport: (ReportEntity, String) -> Unit
 ) {
     if (currentUser?.isAdmin != true) {
         Scaffold(
+            containerColor = Color(0xFF0E1016),
             topBar = {
                 TopAppBar(
-                    title = { Text("Super Admin") },
+                    title = { Text("Owner Control Center", color = Color.White) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                         }
-                    }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0E1016))
                 )
             }
         ) { padding ->
-            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)) {
-                Text("Access Restricted", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Only authorized Super Admins can access platform controls and financial audit logs.")
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Filled.Lock, contentDescription = null, tint = LotusCoral, modifier = Modifier.size(40.dp))
+                Text("Owner Only Access", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    "Owner Control Center is hidden and locked for all normal user accounts.",
+                    color = Color(0xFFA0A5B8)
+                )
             }
         }
         return
@@ -98,30 +135,106 @@ fun SuperAdminScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var userSearch by remember { mutableStateOf("") }
-    var draftCreatorPct by remember(settings.creatorSharePct) { mutableIntStateOf(settings.creatorSharePct) }
-    var draftThreshold by remember(settings.indiaPayoutThresholdInr) { mutableStateOf(settings.indiaPayoutThresholdInr.toInt().toString()) }
 
-    val totalViews = videos.sumOf { it.viewCount }
-    val totalNetRevenue = videos.sumOf { it.netRevenueInr }
-    val totalCreatorShare = totalNetRevenue * (settings.creatorSharePct / 100.0)
-    val totalPlatformShare = totalNetRevenue * (settings.platformSharePct / 100.0)
+    val totalViews = remember(videos) { videos.sumOf { it.viewCount } }
+    val totalNetRevenue = remember(videos) { videos.sumOf { it.netRevenueInr } }
+    val usersById = remember(users) { users.associateBy { it.uid } }
 
     Scaffold(
+        containerColor = Color(0xFF0E1016),
         topBar = {
             TopAppBar(
-                title = { Text("Super Admin Control Center") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BharatTubeLogoMark(modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Owner Control Center",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
-                }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack, modifier = Modifier.testTag("owner_control_back")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = onOpenChhotuAdmin,
+                        modifier = Modifier.testTag("superadmin_open_chhotu_center")
+                    ) {
+                        Icon(Icons.Filled.SmartToy, contentDescription = "Chhotu AI Admin", tint = SaffronFlame)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0E1016))
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = selectedTab) {
-                listOf("Analytics", "Controls", "Money", "Users & Reports").forEachIndexed { index, title ->
-                    Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(title, maxLines = 1) })
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // OWNER ONLY • ADMIN ACCESS Banner (Ref WA9985 / WA0542)
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFF171A25),
+                border = BorderStroke(1.dp, AmberGold.copy(alpha = 0.45f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OwnerCrownControlIcon(modifier = Modifier.size(20.dp), tint = AmberGold)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "OWNER ONLY • ADMIN ACCESS",
+                        color = AmberGold,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(Icons.Filled.Lock, contentDescription = null, tint = SaffronFlame, modifier = Modifier.size(16.dp))
+                }
+            }
+
+            // 5 Focused Tabs
+            val tabTitles = listOf("Control", "Paisa", "Work & Boost", "Users", "Payouts")
+            ScrollableTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color(0xFF131620),
+                contentColor = Color.White,
+                edgePadding = 12.dp,
+                indicator = { tabPositions ->
+                    if (selectedTab < tabPositions.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = SaffronFlame,
+                            height = 2.5.dp
+                        )
+                    }
+                }
+            ) {
+                tabTitles.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selectedTab == index) SaffronFlame else Color(0xFFA0A5B8),
+                                maxLines = 1
+                            )
+                        },
+                        modifier = Modifier.testTag("owner_tab_${index}")
+                    )
                 }
             }
 
@@ -131,225 +244,376 @@ fun SuperAdminScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 when (selectedTab) {
+                    // TAB 0: MASTER CONTROL CENTER (Ref WA9985 & WA9133)
                     0 -> {
                         item {
-                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text("Platform Analytics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text("Total Users: ${users.size} • Suspended: ${users.count { it.isBanned }}")
-                                    Text("Total Creators / Channels: ${channels.size}")
-                                    Text("Long Videos: ${videos.count { it.format == VideoFormat.LONG.name }} • Shorts: ${videos.count { it.format == VideoFormat.SHORT.name }}")
-                                    Text("Total Views: ${BharatTubeCatalog.formatCompactCount(totalViews)}")
-                                    Text("Net Ad Revenue: ₹${String.format("%.2f", totalNetRevenue)}")
-                                    Text("Creator Share (${settings.creatorSharePct}%): ₹${String.format("%.2f", totalCreatorShare)}", color = EmeraldVerified)
-                                    Text("BharatTube Share (${settings.platformSharePct}%): ₹${String.format("%.2f", totalPlatformShare)}", color = SaffronFlame)
-                                    Text("Payout Requests: ${payouts.size} • Open Reports: ${reports.count { it.status == "OPEN" }}")
-                                    Spacer(Modifier.height(4.dp))
-                                    Button(
-                                        onClick = onOpenChhotuAdmin,
-                                        colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
-                                        modifier = Modifier.fillMaxWidth().testTag("superadmin_open_chhotu_center")
+                            // Brand Control + Revenue Split Pill (strictly Owner Control Center ONLY)
+                            OwnerControlCard(borderColor = SaffronFlame.copy(alpha = 0.4f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.TrackChanges, contentDescription = null, tint = SaffronFlame)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("Brand Control", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                                    androidx.compose.material3.Switch(
+                                        checked = settings.brandControlEnabled,
+                                        onCheckedChange = {
+                                            onUpdateSettings(settings.copy(brandControlEnabled = it), "BRAND_CONTROL", "Toggled Brand Control", "${settings.brandControlEnabled}", "$it")
+                                        }
+                                    )
+                                }
+                                Text("Revenue Split Control (Visible only in Owner Control Center)", style = MaterialTheme.typography.labelMedium, color = Color(0xFFA0A5B8))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF0E1016), RoundedCornerShape(12.dp))
+                                        .padding(4.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = SaffronFlame,
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Text("Open Chhotu AI Control Center & 17-Point Check")
+                                        Text(
+                                            text = "BharatTube ${settings.platformSharePct}%",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 10.dp)
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFF1D2130),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = "Creator ${settings.creatorSharePct}%",
+                                            color = EmeraldVerified,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 10.dp)
+                                        )
                                     }
                                 }
                             }
                         }
-                        item {
-                            Text("Immutable Admin Audit Log", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
-                        items(auditLogs, key = { it.id }) { log ->
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(log.action, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = SaffronFlame)
-                                    Text(log.details, style = MaterialTheme.typography.bodySmall)
-                                    Text("${log.previousValue} → ${log.newValue}", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
 
-                    1 -> {
                         item {
-                            Text("Global ON/OFF Controls (Preserves all user balances & data)", style = MaterialTheme.typography.bodySmall)
+                            OwnerToggleRow(
+                                icon = Icons.Filled.PowerSettingsNew,
+                                iconTint = if (settings.appEnabled) EmeraldVerified else LotusCoral,
+                                title = "App On / Off",
+                                subtitle = if (settings.appEnabled) "BharatTube app is LIVE for all users" else "BharatTube is OFF for normal users",
+                                checked = settings.appEnabled,
+                                testTag = "control_app_on_off",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(appEnabled = it), "APP_ON_OFF", "Master App Switch", "${settings.appEnabled}", "$it")
+                                }
+                            )
                         }
                         item {
-                            AdminSwitchRow("Video Uploads", settings.videoUploadsEnabled) {
-                                onUpdateSettings(settings.copy(videoUploadsEnabled = it), "TOGGLE_UPLOADS", "Video uploads toggled", "${settings.videoUploadsEnabled}", "$it")
+                            OwnerToggleRow(
+                                icon = Icons.Filled.Build,
+                                iconTint = AmberGold,
+                                title = "Maintenance Mode",
+                                subtitle = "Show maintenance screen to non-owner users",
+                                checked = settings.maintenanceMode,
+                                testTag = "control_maintenance_mode",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(maintenanceMode = it), "MAINTENANCE_MODE", "Maintenance Mode toggled", "${settings.maintenanceMode}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.Home,
+                                iconTint = ElectricCobalt,
+                                title = "Home Page Control",
+                                subtitle = "Creator spotlight & Home feed personalization",
+                                checked = settings.homePageControlEnabled,
+                                testTag = "control_home_page",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(homePageControlEnabled = it), "HOME_CONTROL", "Home Page Control toggled", "${settings.homePageControlEnabled}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.CloudUpload,
+                                iconTint = SaffronFlame,
+                                title = "Upload Control (Videos)",
+                                subtitle = "Moderate & allow creator video uploads",
+                                checked = settings.videoUploadsEnabled,
+                                testTag = "control_upload",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(videoUploadsEnabled = it), "UPLOAD_CONTROL", "Video Uploads toggled", "${settings.videoUploadsEnabled}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.ManageAccounts,
+                                iconTint = ElectricCobalt,
+                                title = "Profile Control",
+                                subtitle = "Allow users to edit channel banner, logo & details",
+                                checked = settings.profileControlEnabled,
+                                testTag = "control_profile",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(profileControlEnabled = it), "PROFILE_CONTROL", "Profile editing toggled", "${settings.profileControlEnabled}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.SmartToy,
+                                iconTint = SaffronFlame,
+                                title = "Chhotu AI Control",
+                                subtitle = "Enable in-app Chhotu AI assistant & health monitor",
+                                checked = settings.chhotuAiEnabled,
+                                testTag = "control_chhotu_ai",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(chhotuAiEnabled = it), "CHHOTU_AI_CONTROL", "Chhotu AI toggled", "${settings.chhotuAiEnabled}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.AttachMoney,
+                                iconTint = EmeraldVerified,
+                                title = "Monetization Control",
+                                subtitle = "Creator earnings & automatic payout system",
+                                checked = settings.creatorMonetizationEnabled,
+                                testTag = "control_monetization",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(creatorMonetizationEnabled = it), "MONETIZATION_CONTROL", "Creator monetization toggled", "${settings.creatorMonetizationEnabled}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.Campaign,
+                                iconTint = AmberGold,
+                                title = "Ads Control",
+                                subtitle = "Global AdMob Banner, Interstitial & Video ads",
+                                checked = settings.advertisementsEnabled,
+                                testTag = "control_ads",
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(advertisementsEnabled = it), "ADS_CONTROL", "Global ads toggled", "${settings.advertisementsEnabled}", "$it")
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.Security,
+                                iconTint = EmeraldVerified,
+                                title = "Privacy Control",
+                                subtitle = "Comments, likes, subscriptions & chat controls",
+                                checked = settings.privacyControlEnabled,
+                                testTag = "control_privacy",
+                                onCheckedChange = {
+                                    onUpdateSettings(
+                                        settings.copy(
+                                            privacyControlEnabled = it,
+                                            commentsEnabled = it,
+                                            chatEnabled = it
+                                        ),
+                                        "PRIVACY_CONTROL",
+                                        "Privacy, comments & chat toggled",
+                                        "${settings.privacyControlEnabled}",
+                                        "$it"
+                                    )
+                                }
+                            )
+                        }
+                        item {
+                            OwnerToggleRow(
+                                icon = Icons.Filled.LiveTv,
+                                iconTint = LotusCoral,
+                                title = "Live & Shorts Control",
+                                subtitle = "Allow Live Streaming and Shorts feed",
+                                checked = settings.liveStreamingEnabled && settings.shortsEnabled,
+                                testTag = "control_live_shorts",
+                                onCheckedChange = {
+                                    onUpdateSettings(
+                                        settings.copy(liveStreamingEnabled = it, shortsEnabled = it),
+                                        "LIVE_SHORTS_CONTROL",
+                                        "Live & Shorts toggled",
+                                        "${settings.liveStreamingEnabled}",
+                                        "$it"
+                                    )
+                                }
+                            )
+                        }
+                        item {
+                            Button(
+                                onClick = onOpenChhotuAdmin,
+                                colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Icon(Icons.Filled.SmartToy, contentDescription = null, tint = Color.Black)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Open Chhotu AI Diagnostics & 17-Point Check", color = Color.Black, fontWeight = FontWeight.Bold)
                             }
-                            AdminSwitchRow("Shorts & Reels", settings.shortsEnabled) {
-                                onUpdateSettings(settings.copy(shortsEnabled = it), "TOGGLE_SHORTS", "Shorts toggled", "${settings.shortsEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Live Streaming", settings.liveStreamingEnabled) {
-                                onUpdateSettings(settings.copy(liveStreamingEnabled = it), "TOGGLE_LIVE", "Live streaming toggled", "${settings.liveStreamingEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Comments", settings.commentsEnabled) {
-                                onUpdateSettings(settings.copy(commentsEnabled = it), "TOGGLE_COMMENTS", "Comments toggled", "${settings.commentsEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Likes & Subscriptions", settings.likesEnabled && settings.subscriptionsEnabled) {
-                                onUpdateSettings(
-                                    settings.copy(likesEnabled = it, subscriptionsEnabled = it),
-                                    "TOGGLE_ENGAGEMENT",
-                                    "Likes & Subscriptions toggled",
-                                    "${settings.likesEnabled}",
-                                    "$it"
+                        }
+                        item {
+                            OwnerControlCard {
+                                Text("Platform Overview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(
+                                    "Users: ${users.size} • Channels: ${channels.size} • Videos: ${videos.size} • Views: ${BharatTubeCatalog.formatCompactCount(totalViews)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFA0A5B8)
+                                )
+                                Text(
+                                    "Ad Pool Net: ₹${String.format("%,.2f", totalNetRevenue)} • Payouts Logged: ${payouts.size}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = EmeraldVerified
                                 )
                             }
-                            AdminSwitchRow("Direct & Group Chat", settings.chatEnabled) {
-                                onUpdateSettings(settings.copy(chatEnabled = it), "TOGGLE_CHAT", "Chat toggled", "${settings.chatEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Advertisements Global Switch", settings.advertisementsEnabled) {
-                                onUpdateSettings(settings.copy(advertisementsEnabled = it), "TOGGLE_ADS", "Global ads toggled", "${settings.advertisementsEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Pre-Roll Ads", settings.preRollAdsEnabled) {
-                                onUpdateSettings(settings.copy(preRollAdsEnabled = it), "TOGGLE_PREROLL", "Pre-roll ads toggled", "${settings.preRollAdsEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Mid-Roll Ads", settings.midRollAdsEnabled) {
-                                onUpdateSettings(settings.copy(midRollAdsEnabled = it), "TOGGLE_MIDROLL", "Mid-roll ads toggled", "${settings.midRollAdsEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Meta Audience Network Adapter", settings.metaAudienceNetworkEnabled) {
-                                onUpdateSettings(settings.copy(metaAudienceNetworkEnabled = it), "TOGGLE_META_SDK", "Meta Audience Network adapter toggled", "${settings.metaAudienceNetworkEnabled}", "$it")
-                            }
-                            AdminSwitchRow("Meta Test Mode", settings.metaTestMode) {
-                                onUpdateSettings(settings.copy(metaTestMode = it), "TOGGLE_META_TEST", "Meta test mode toggled", "${settings.metaTestMode}", "$it")
-                            }
                         }
                     }
 
+                    // TAB 1: PAISA / MONEY CONTROL (Ref WA0542 & WA9906)
+                    1 -> {
+                        item {
+                            OwnerPaisaControlSection(
+                                settings = settings,
+                                onUpdateSettings = onUpdateSettings
+                            )
+                        }
+                    }
+
+                    // TAB 2: WORK & BOOST CONTROL (Req #4)
                     2 -> {
                         item {
-                            val platformPct = 100 - draftCreatorPct
-                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("Revenue Share Rule (Must Total 100%)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        "Creator: $draftCreatorPct%  |  BharatTube: $platformPct%",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = SaffronFlame
-                                    )
-                                    Slider(
-                                        value = draftCreatorPct.toFloat(),
-                                        onValueChange = { draftCreatorPct = it.roundToInt() },
-                                        valueRange = 10f..90f
-                                    )
-                                    OutlinedTextField(
-                                        value = draftThreshold,
-                                        onValueChange = { draftThreshold = it.filter { ch -> ch.isDigit() } },
-                                        label = { Text("India Minimum Payout (INR ₹)") },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Button(
-                                        onClick = {
-                                            val newThresh = draftThreshold.toDoubleOrNull()?.coerceAtLeast(100.0) ?: 1000.0
-                                            onUpdateSettings(
-                                                settings.copy(
-                                                    creatorSharePct = draftCreatorPct,
-                                                    platformSharePct = platformPct,
-                                                    indiaPayoutThresholdInr = newThresh
-                                                ),
-                                                "UPDATE_MONETIZATION_SPLIT",
-                                                "Updated global revenue share & India payout threshold",
-                                                "${settings.creatorSharePct}:${settings.platformSharePct} | ₹${settings.indiaPayoutThresholdInr.toInt()}",
-                                                "$draftCreatorPct:$platformPct | ₹${newThresh.toInt()}"
-                                            )
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
-                                        modifier = Modifier.fillMaxWidth().testTag("save_revenue_split_button")
-                                    ) {
-                                        Text("Save & Log Audit Entry")
-                                    }
-                                    AdminSwitchRow("Creator Monetization Enabled", settings.creatorMonetizationEnabled) {
-                                        onUpdateSettings(settings.copy(creatorMonetizationEnabled = it), "TOGGLE_MONETIZATION", "Creator monetization toggled", "${settings.creatorMonetizationEnabled}", "$it")
-                                    }
-                                    AdminSwitchRow("Automatic Payout Enabled", settings.automaticPayoutEnabled) {
-                                        onUpdateSettings(settings.copy(automaticPayoutEnabled = it), "TOGGLE_AUTOPAYOUT", "Auto payout toggled", "${settings.automaticPayoutEnabled}", "$it")
-                                    }
-                                }
-                            }
+                            OwnerWorkAndBoostSection(
+                                settings = settings,
+                                onUpdateSettings = onUpdateSettings
+                            )
                         }
                     }
 
-                    else -> {
+                    // TAB 3: USER CONTROL (Req #5)
+                    3 -> {
                         item {
                             OutlinedTextField(
                                 value = userSearch,
                                 onValueChange = { userSearch = it },
-                                label = { Text("Search users by name or handle") },
-                                modifier = Modifier.fillMaxWidth()
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SaffronFlame) },
+                                placeholder = { Text("Search user by Name or @Handle...") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("owner_user_search_input")
                             )
                         }
-                        items(
-                            users.filter {
-                                userSearch.isBlank() ||
-                                    it.username.contains(userSearch, ignoreCase = true) ||
-                                    it.handle.contains(userSearch, ignoreCase = true)
-                            },
-                            key = { it.uid }
-                        ) { target ->
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("${target.username} (${target.handle})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            if (target.isBanned) "SUSPENDED: ${target.banReason}" else "Active • ${target.countryCode}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (target.isBanned) LotusCoral else EmeraldVerified
-                                        )
-                                    }
-                                    if (!target.isAdmin) {
-                                        OutlinedButton(onClick = {
-                                            onModerateUser(target, !target.isBanned, if (target.isBanned) "Restored by Admin" else "Policy review suspension")
-                                        }) {
-                                            Text(if (target.isBanned) "Restore" else "Ban")
+                        val filteredUsers = users.filter {
+                            userSearch.isBlank() ||
+                                it.username.contains(userSearch, ignoreCase = true) ||
+                                it.handle.contains(userSearch, ignoreCase = true)
+                        }
+                        items(filteredUsers, key = { it.uid }) { target ->
+                            OwnerUserControlCard(
+                                target = target,
+                                channels = channels,
+                                videos = videos,
+                                settings = settings,
+                                onBanToggle = { ban ->
+                                    onModerateUser(target, ban, if (ban) "Banned via Owner Control Center" else "Unbanned by Owner")
+                                },
+                                onWarn = { reason -> onWarnUser(target, reason) },
+                                onBlockToggle = { block ->
+                                    onBlockUser(target, block, if (block) "Comments & Chat blocked by Owner" else "Unblocked by Owner")
+                                },
+                                onLimitToggle = { limit ->
+                                    onLimitUser(target, limit, if (limit) "Upload/Live limit restricted by Owner" else "Work limit restored by Owner")
+                                },
+                                onBoostChange = { pct -> onBoostUser(target, pct) }
+                            )
+                        }
+                    }
+
+                    // TAB 4: AUTOMATIC PAYOUT (₹2,000), PAYOUT HISTORY, REPORTS & AUDIT LOGS (Req #6)
+                    else -> {
+                        item {
+                            OwnerControlCard(borderColor = EmeraldVerified.copy(alpha = 0.45f)) {
+                                Text(
+                                    "Automatic Payout Engine — Minimum ₹${settings.indiaPayoutThresholdInr.toInt()}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Auto Payout: ${if (settings.automaticPayoutEnabled) "ON" else "OFF"} • Methods: UPI / Bank Account\nWhenever a creator balance reaches ₹${settings.indiaPayoutThresholdInr.toInt()}, payout triggers automatically.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFB5BACB)
+                                )
+                                Button(
+                                    onClick = onTriggerAutoPayoutSweep,
+                                    colors = ButtonDefaults.buttonColors(containerColor = SaffronFlame),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().testTag("owner_run_autopayout_button")
+                                ) {
+                                    Text("Run Auto-Payout Check Now (≥ ₹${settings.indiaPayoutThresholdInr.toInt()})", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        item {
+                            Text(
+                                "Payout History (${payouts.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        if (payouts.isEmpty()) {
+                            item {
+                                OwnerControlCard {
+                                    Text("No payouts recorded yet.", color = Color(0xFFA0A5B8), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        } else {
+                            items(payouts, key = { it.id }) { payout ->
+                                val owner = usersById[payout.userId]
+                                OwnerPayoutHistoryCard(
+                                    payout = payout,
+                                    ownerName = owner?.let { "${it.username} (${it.handle})" } ?: payout.channelId,
+                                    onTogglePaid = { nextStatus -> onUpdatePayoutStatus(payout, nextStatus) }
+                                )
+                            }
+                        }
+                        if (reports.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(4.dp))
+                                Text("Safety & Copyright Reports (${reports.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            items(reports, key = { it.id }) { report ->
+                                OwnerControlCard {
+                                    Text("${report.reason} — ${report.targetTitle}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("Status: ${report.status} • ${report.details}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFA0A5B8))
+                                    if (report.status == "OPEN") {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(onClick = { onResolveReport(report, "ACTION_TAKEN") }) { Text("Enforce") }
+                                            OutlinedButton(onClick = { onResolveReport(report, "DISMISSED") }) { Text("Dismiss", color = Color.White) }
                                         }
                                     }
                                 }
                             }
                         }
                         item {
-                            Spacer(Modifier.height(8.dp))
-                            Text("Copyright & Safety Reports (${reports.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Owner Audit Log (${auditLogs.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                         }
-                        items(reports, key = { it.id }) { report ->
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text("${report.reason} — ${report.targetTitle}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    Text("Status: ${report.status} • ${report.details}", style = MaterialTheme.typography.bodySmall)
-                                    if (report.status == "OPEN") {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Button(onClick = { onResolveReport(report, "ACTION_TAKEN") }) { Text("Enforce") }
-                                            OutlinedButton(onClick = { onResolveReport(report, "DISMISSED") }) { Text("Dismiss") }
-                                        }
-                                    }
-                                }
+                        items(auditLogs.take(15), key = { it.id }) { log ->
+                            OwnerControlCard {
+                                Text(log.action, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = SaffronFlame)
+                                Text(log.details, style = MaterialTheme.typography.bodySmall, color = Color.White)
+                                Text("${log.previousValue} → ${log.newValue}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF9AA1B6))
                             }
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun AdminSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

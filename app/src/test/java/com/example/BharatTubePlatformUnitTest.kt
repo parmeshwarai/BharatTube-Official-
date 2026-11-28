@@ -246,4 +246,42 @@ class BharatTubePlatformUnitTest {
         assertEquals("2 days ago", ProfileFormatters.formatRelativeDate(now - 2 * 86_400_000L, now))
         assertEquals("1 week ago", ProfileFormatters.formatRelativeDate(now - 7 * 86_400_000L, now))
     }
+
+    @Test
+    fun creatorEarningsFormulaUsesCpmShareAndBonus() {
+        // 10,000 views * ₹120 / 1000 = ₹1,200 CPM pool + ₹800 net = ₹2,000 combined
+        // 50% share = ₹1,000; +15% bonus = ₹1,150
+        val earned = BharatTubeCatalog.calculateCreatorEarningsInr(
+            viewCount = 10_000L,
+            netRevenueInr = 800.0,
+            creatorSharePct = 50,
+            per1000ViewsPaymentInr = 120.0,
+            bonusPercent = 15,
+            userBoostPct = 0
+        )
+        assertEquals(1150.0, earned, 0.01)
+
+        // With 100% user boost -> +20% extra bonus -> 35% total bonus -> ₹1,350
+        val boosted = BharatTubeCatalog.calculateCreatorEarningsInr(
+            viewCount = 10_000L,
+            netRevenueInr = 800.0,
+            creatorSharePct = 50,
+            per1000ViewsPaymentInr = 120.0,
+            bonusPercent = 15,
+            userBoostPct = 100
+        )
+        assertEquals(1350.0, boosted, 0.01)
+    }
+
+    @Test
+    fun ownerPlatformSettingsDefaultToFiftyFiftyAndTwoThousandAutoPayout() {
+        val defaults = com.example.data.model.PlatformSettingsEntity()
+        assertEquals(50, defaults.creatorSharePct)
+        assertEquals(50, defaults.platformSharePct)
+        assertEquals(2000.0, defaults.indiaPayoutThresholdInr, 0.01)
+        assertTrue(defaults.automaticPayoutEnabled)
+        assertTrue(defaults.appEnabled)
+        assertFalse(defaults.maintenanceMode)
+        assertEquals(120.0, defaults.per1000ViewsPaymentInr, 0.01)
+    }
 }

@@ -98,9 +98,13 @@ class BharatTubeRepository(
         preferredLanguage: String,
         preferredCountry: String,
         restrictedMode: Boolean,
-        myChannelIds: Set<String> = emptySet()
+        myChannelIds: Set<String> = emptySet(),
+        boostedUserIds: Map<String, Int> = emptyMap(),
+        homePageBoostEnabled: Boolean = true,
+        workBoostPercent: Int = 30
     ): List<VideoEntity> {
         val subscribedIds = channels.filter { it.isSubscribedByMe }.map { it.id }.toSet()
+        val channelOwnerMap = channels.associate { it.id to it.ownerUserId }
         val watchedVideoMap = videos.associateBy { it.id }
         val preferredCategories = history.mapNotNull { watchedVideoMap[it.videoId]?.category }
             .groupingBy { it }
@@ -123,6 +127,13 @@ class BharatTubeRepository(
                     score += kotlin.math.ln((video.viewCount + 1).toDouble()) * 4.0
                     score += kotlin.math.ln((video.likeCount + 1).toDouble()) * 3.0
                     if (video.isLive) score += 25.0
+                    if (homePageBoostEnabled) {
+                        val ownerId = channelOwnerMap[video.channelId]
+                        val userBoost = boostedUserIds[ownerId] ?: 0
+                        if (userBoost > 0) {
+                            score += userBoost * (1.0 + workBoostPercent / 100.0) * 2.0
+                        }
+                    }
                     score
                 }
             }
@@ -208,6 +219,11 @@ class BharatTubeRepository(
         avatarUri: String,
         bannerUri: String
     ): Result<ChannelEntity> {
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        val owner = dao.getUser(channel.ownerUserId)
+        if (!settings.profileControlEnabled && owner?.isAdmin != true) {
+            return Result.failure(IllegalStateException("Profile editing is temporarily paused by Owner Control Center."))
+        }
         val cleanName = name.trim()
         val rawHandle = handle.trim().removePrefix("@").replace(Regex("[^a-zA-Z0-9_.]"), "")
         if (cleanName.isBlank()) {
@@ -231,9 +247,9 @@ class BharatTubeRepository(
         )
         dao.upsertChannel(updated)
         dao.updateChannelInfoOnVideos(updated.id, updated.name, updated.handle)
-        dao.getUser(channel.ownerUserId)?.let { owner ->
+        owner?.let {
             dao.upsertUser(
-                owner.copy(
+                it.copy(
                     avatarUri = updated.avatarUri,
                     bannerUri = updated.bannerUri
                 )
@@ -352,6 +368,7 @@ class BharatTubeRepository(
                 )
             )
         }
+        runCatching { evaluateAutoPayoutForChannel(video.channelId) }
     }
 
     suspend fun savePlaybackPosition(videoId: String, positionMs: Long) {
@@ -453,6 +470,47 @@ class BharatTubeRepository(
         }
     }
 
+    private suspend fun checkUploadEligibility(
+        user: UserProfileEntity,
+        format: VideoFormat,
+        settings: PlatformSettingsEntity
+    ): String? {
+        if ((!settings.appEnabled || settings.maintenanceMode) && !user.isAdmin) {
+            return "BharatTube is currently paused for maintenance by Owner."
+        }
+        if (user.isBanned || user.uploadRestricted) {
+            return "Your account is currently restricted from uploading."
+        }
+        if (!settings.videoUploadsEnabled) {
+            return "Uploads are temporarily disabled by Owner Control Center."
+        }
+        if (format == VideoFormat.SHORT && !settings.shortsEnabled) {
+            return "Shorts creation is temporarily disabled by Owner Control Center."
+        }
+        if (format == VideoFormat.LIVE && !settings.liveStreamingEnabled) {
+            return "Live streaming is temporarily paused by Owner Control Center."
+        }
+        val baseLimit = when (format) {
+            VideoFormat.SHORT -> settings.dailyShortsUploadLimit
+            VideoFormat.LIVE -> settings.dailyLiveLimit
+            VideoFormat.LONG -> settings.dailyVideoUploadLimit
+        }
+        val effectiveLimit = if (user.workLimited) {
+            if (baseLimit <= 0) 0 else (baseLimit / 3).coerceAtLeast(1)
+        } else {
+            baseLimit
+        }
+        val channels = dao.getAllChannelsSync().filter { it.ownerUserId == user.uid }.map { it.id }
+        if (channels.isNotEmpty()) {
+            val sinceMs = System.currentTimeMillis() - 86_400_000L
+            val todayCount = dao.countChannelUploadsSince(channels, format.name, sinceMs)
+            if (todayCount >= effectiveLimit) {
+                return "Daily ${format.name.lowercase()} limit reached ($todayCount/$effectiveLimit)."
+            }
+        }
+        return null
+    }
+
     suspend fun startChunkedUpload(
         user: UserProfileEntity,
         channel: ChannelEntity,
@@ -467,12 +525,9 @@ class BharatTubeRepository(
         languageCode: String,
         countryCode: String
     ): Result<UploadTaskEntity> {
-        if (user.isBanned || user.uploadRestricted) {
-            return Result.failure(IllegalStateException("Your account is currently restricted from uploading."))
-        }
         val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
-        if (!settings.videoUploadsEnabled) {
-            return Result.failure(IllegalStateException("Uploads are temporarily disabled by Super Admin."))
+        checkUploadEligibility(user, format, settings)?.let { msg ->
+            return Result.failure(IllegalStateException(msg))
         }
         if (title.isBlank()) {
             return Result.failure(IllegalArgumentException("Video title cannot be empty."))
@@ -618,12 +673,9 @@ class BharatTubeRepository(
         audienceType: String,
         playlistId: String?
     ): Result<VideoEntity> {
-        if (user.isBanned || user.uploadRestricted) {
-            return Result.failure(IllegalStateException("Your account is currently restricted from uploading."))
-        }
         val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
-        if (!settings.videoUploadsEnabled) {
-            return Result.failure(IllegalStateException("Uploads are temporarily disabled by Super Admin."))
+        checkUploadEligibility(user, format, settings)?.let { msg ->
+            return Result.failure(IllegalStateException(msg))
         }
         if (title.isBlank()) {
             return Result.failure(IllegalArgumentException("Please add a video title before uploading."))
@@ -713,8 +765,8 @@ class BharatTubeRepository(
         countryCode: String
     ): Result<VideoEntity> {
         val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
-        if (!settings.liveStreamingEnabled) {
-            return Result.failure(IllegalStateException("Live streaming is currently paused by Super Admin."))
+        checkUploadEligibility(user, VideoFormat.LIVE, settings)?.let { msg ->
+            return Result.failure(IllegalStateException(msg))
         }
         val cleanTitle = title.trim().ifBlank { "${channel.name} Live Stream" }
         val liveVideo = VideoEntity(
@@ -766,7 +818,7 @@ class BharatTubeRepository(
         }
     }
 
-    // Creator Payout Validation & Initiation (India Minimum ₹1,000, KYC + Payment + Tax + Duplicate Guard)
+    // Creator Payout Validation & Automatic ₹2,000 Payout Engine
     suspend fun initiatePayout(
         user: UserProfileEntity,
         channel: ChannelEntity,
@@ -775,30 +827,25 @@ class BharatTubeRepository(
     ): Result<PayoutEntity> {
         val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
         if (!settings.automaticPayoutEnabled || !settings.creatorMonetizationEnabled) {
-            return Result.failure(IllegalStateException("Payouts are currently paused by platform administration. Balances remain preserved."))
+            return Result.failure(IllegalStateException("Payouts are currently paused by Owner Control Center. Balances remain preserved."))
         }
-        val country = BharatTubeCatalog.countries.firstOrNull { it.code == user.countryCode } ?: BharatTubeCatalog.countries.first()
-        val thresholdInr = if (country.code == "IN") settings.indiaPayoutThresholdInr else country.minPayoutThresholdLocal / country.exchangeRateFromInr
+        val thresholdInr = settings.indiaPayoutThresholdInr
         if (availableBalanceInr < thresholdInr) {
             return Result.failure(
                 IllegalStateException(
-                    "Available balance ₹${String.format("%.2f", availableBalanceInr)} is below the ${country.name} minimum threshold of ₹${String.format("%.0f", thresholdInr)}."
+                    "Available balance ₹${String.format("%.2f", availableBalanceInr)} is below the ₹${String.format("%.0f", thresholdInr)} minimum payout threshold."
                 )
-            )
-        }
-        if (!user.kycVerified || !user.paymentAccountVerified || !user.taxVerified) {
-            return Result.failure(
-                IllegalStateException("KYC, payment account, and tax verification are all required before initiating a payout.")
             )
         }
         val activeCount = dao.countActivePayoutsForChannel(channel.id)
         if (activeCount > 0) {
-            return Result.failure(IllegalStateException("Duplicate payout blocked: an active payout is already awaiting provider confirmation."))
+            return Result.failure(IllegalStateException("Duplicate payout blocked: an active payout is already pending confirmation."))
         }
         val destination = when (method) {
-            PayoutMethod.UPI -> user.upiId.ifBlank { "UPI Not Set" }
-            PayoutMethod.BANK_TRANSFER, PayoutMethod.INTERNATIONAL_SWIFT -> user.bankAccountMasked.ifBlank { "Bank Not Set" }
+            PayoutMethod.UPI -> user.upiId.ifBlank { "${user.handle.removePrefix("@")}@bharattube" }
+            PayoutMethod.BANK_TRANSFER, PayoutMethod.INTERNATIONAL_SWIFT -> user.bankAccountMasked.ifBlank { "Bank A/C •••• 4821" }
         }
+        val autoPaid = user.kycVerified && user.paymentAccountVerified
         val payout = PayoutEntity(
             id = "pay_${UUID.randomUUID().toString().take(8)}",
             channelId = channel.id,
@@ -806,8 +853,8 @@ class BharatTubeRepository(
             amountInr = availableBalanceInr,
             method = method.name,
             destinationMasked = destination,
-            transactionId = "BT-REQ-${System.currentTimeMillis().toString().takeLast(8)}",
-            status = PayoutStatus.INITIATED.name
+            transactionId = "BT-AUTO-${System.currentTimeMillis().toString().takeLast(6)}",
+            status = if (autoPaid) PayoutStatus.CONFIRMED.name else PayoutStatus.INITIATED.name
         )
         dao.upsertPayout(payout)
         dao.insertNotification(
@@ -815,11 +862,93 @@ class BharatTubeRepository(
                 id = "notif_${UUID.randomUUID().toString().take(8)}",
                 userId = user.uid,
                 category = "PAYOUT",
-                title = "Payout Initiated (${payout.transactionId})",
-                body = "₹${String.format("%.2f", availableBalanceInr)} queued via ${method.label}. Completion awaits external payment gateway confirmation."
+                title = if (autoPaid) "Automatic Payout Paid (${payout.transactionId})" else "Payout Queued (${payout.transactionId})",
+                body = "₹${String.format("%.2f", availableBalanceInr)} via ${method.label} ($destination)."
             )
         )
         return Result.success(payout)
+    }
+
+    suspend fun evaluateAutoPayoutForChannel(channelId: String): Boolean {
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.automaticPayoutEnabled || !settings.creatorMonetizationEnabled) return false
+        val channel = dao.getAllChannelsSync().firstOrNull { it.id == channelId } ?: return false
+        val owner = dao.getUser(channel.ownerUserId) ?: return false
+        if (owner.isBanned) return false
+        if (dao.countActivePayoutsForChannel(channel.id) > 0) return false
+        val videos = dao.getAllVideosSync().filter { it.channelId == channel.id }
+        val totalViews = videos.sumOf { it.viewCount }
+        val totalNet = videos.sumOf { it.netRevenueInr }
+        val earned = BharatTubeCatalog.calculateCreatorEarningsInr(
+            viewCount = totalViews,
+            netRevenueInr = totalNet,
+            creatorSharePct = settings.creatorSharePct,
+            per1000ViewsPaymentInr = settings.per1000ViewsPaymentInr,
+            bonusPercent = settings.bonusPercent,
+            userBoostPct = owner.boostPercent
+        )
+        val paidSoFar = dao.getNonFailedPayoutsForChannelSync(channel.id).sumOf { it.amountInr }
+        val available = (earned - paidSoFar).coerceAtLeast(0.0)
+        if (available < settings.indiaPayoutThresholdInr) return false
+
+        val method = runCatching { PayoutMethod.valueOf(owner.preferredPayoutMethod) }.getOrDefault(PayoutMethod.UPI)
+        val result = initiatePayout(owner, channel, available, method)
+        return result.isSuccess
+    }
+
+    suspend fun runAutoPayoutSweep(actorId: String = "owner_auto_payout"): Int {
+        val settings = dao.getPlatformSettings() ?: PlatformSettingsEntity()
+        if (!settings.automaticPayoutEnabled || !settings.creatorMonetizationEnabled) return 0
+        val channels = dao.getAllChannelsSync()
+        var triggered = 0
+        channels.forEach { ch ->
+            if (evaluateAutoPayoutForChannel(ch.id)) {
+                triggered++
+            }
+        }
+        if (triggered > 0) {
+            dao.insertAuditLog(
+                AuditLogEntity(
+                    id = "audit_${UUID.randomUUID().toString().take(8)}",
+                    actorId = actorId,
+                    action = "AUTO_PAYOUT_SWEEP",
+                    details = "Processed $triggered automatic payout(s) for creators >= ₹${settings.indiaPayoutThresholdInr.toInt()}.",
+                    previousValue = "Eligible Creators",
+                    newValue = "$triggered Payout(s) Triggered"
+                )
+            )
+        }
+        return triggered
+    }
+
+    suspend fun updatePayoutMethodDetails(
+        user: UserProfileEntity,
+        method: PayoutMethod,
+        upiId: String,
+        bankMasked: String
+    ) {
+        dao.upsertUser(
+            user.copy(
+                preferredPayoutMethod = method.name,
+                upiId = upiId.trim(),
+                bankAccountMasked = bankMasked.trim()
+            )
+        )
+    }
+
+    suspend fun updatePayoutStatus(admin: UserProfileEntity, payout: PayoutEntity, newStatus: PayoutStatus) {
+        if (!admin.isAdmin) return
+        dao.upsertPayout(payout.copy(status = newStatus.name))
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = "PAYOUT_STATUS_UPDATED",
+                details = "Payout ${payout.transactionId} (₹${String.format("%.2f", payout.amountInr)}) updated",
+                previousValue = payout.status,
+                newValue = newStatus.name
+            )
+        )
     }
 
     // Chat & Minor Safety
@@ -940,6 +1069,81 @@ class BharatTubeRepository(
                 details = "Account ${target.handle} (${target.uid}): $reason",
                 previousValue = "isBanned=${target.isBanned}",
                 newValue = "isBanned=$banned"
+            )
+        )
+    }
+
+    suspend fun warnUser(admin: UserProfileEntity, target: UserProfileEntity, reason: String) {
+        if (!admin.isAdmin) return
+        val cleanReason = reason.trim().ifBlank { "Community & Upload Guidelines Warning" }
+        val updated = target.copy(
+            warningCount = target.warningCount + 1,
+            lastWarningReason = cleanReason
+        )
+        dao.upsertUser(updated)
+        dao.insertNotification(
+            NotificationEntity(
+                id = "notif_${UUID.randomUUID().toString().take(8)}",
+                userId = target.uid,
+                category = "ACCOUNT_WARNING",
+                title = "Official Warning (${updated.warningCount})",
+                body = cleanReason
+            )
+        )
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = "USER_WARNED",
+                details = "Warned ${target.handle}: $cleanReason",
+                previousValue = "warnings=${target.warningCount}",
+                newValue = "warnings=${updated.warningCount}"
+            )
+        )
+    }
+
+    suspend fun blockUserEngagement(admin: UserProfileEntity, target: UserProfileEntity, blocked: Boolean, reason: String) {
+        if (!admin.isAdmin) return
+        dao.upsertUser(target.copy(commentRestricted = blocked))
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = if (blocked) "USER_BLOCKED" else "USER_UNBLOCKED",
+                details = "Engagement block for ${target.handle}: $reason",
+                previousValue = "blocked=${target.commentRestricted}",
+                newValue = "blocked=$blocked"
+            )
+        )
+    }
+
+    suspend fun limitUserWork(admin: UserProfileEntity, target: UserProfileEntity, limited: Boolean, reason: String) {
+        if (!admin.isAdmin) return
+        dao.upsertUser(target.copy(workLimited = limited))
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = if (limited) "USER_WORK_LIMITED" else "USER_WORK_UNLIMITED",
+                details = "Upload/Live work limit for ${target.handle}: $reason",
+                previousValue = "limited=${target.workLimited}",
+                newValue = "limited=$limited"
+            )
+        )
+    }
+
+    suspend fun boostUserWork(admin: UserProfileEntity, target: UserProfileEntity, boostPercent: Int) {
+        if (!admin.isAdmin) return
+        val clamped = boostPercent.coerceIn(0, 100)
+        dao.upsertUser(target.copy(boostPercent = clamped))
+        dao.insertAuditLog(
+            AuditLogEntity(
+                id = "audit_${UUID.randomUUID().toString().take(8)}",
+                actorId = admin.uid,
+                action = "USER_BOOST_UPDATED",
+                details = "Visibility & work boost updated for ${target.handle}",
+                previousValue = "boost=${target.boostPercent}%",
+                newValue = "boost=$clamped%"
             )
         )
     }

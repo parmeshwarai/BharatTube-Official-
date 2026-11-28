@@ -57,6 +57,9 @@ fun ExploreScreen(
     channels: List<ChannelEntity>,
     currentCountry: String,
     currentLanguage: String,
+    boostedUserIds: Map<String, Int> = emptyMap(),
+    trendingBoostEnabled: Boolean = true,
+    workBoostPercent: Int = 30,
     onSelectCountry: (String) -> Unit,
     onSelectLanguage: (String) -> Unit,
     onOpenVideo: (VideoEntity) -> Unit,
@@ -66,12 +69,18 @@ fun ExploreScreen(
 ) {
     var filterCountry by remember(currentCountry) { mutableStateOf("ALL") }
     var filterLang by remember(currentLanguage) { mutableStateOf("ALL") }
+    val channelOwnerMap = remember(channels) { channels.associate { it.id to it.ownerUserId } }
 
-    val filteredTrending = remember(videos, filterCountry, filterLang) {
+    val filteredTrending = remember(videos, filterCountry, filterLang, boostedUserIds, trendingBoostEnabled, workBoostPercent, channelOwnerMap) {
         videos.filter { video ->
             (filterCountry == "ALL" || video.countryCode == filterCountry) &&
                 (filterLang == "ALL" || video.languageCode == filterLang)
-        }.sortedByDescending { it.viewCount }
+        }.sortedByDescending { video ->
+            val ownerId = channelOwnerMap[video.channelId]
+            val userBoost = if (trendingBoostEnabled) (boostedUserIds[ownerId] ?: 0) else 0
+            val boostMultiplier = 1.0 + ((userBoost + if (userBoost > 0 && trendingBoostEnabled) workBoostPercent else 0) / 100.0)
+            video.viewCount * boostMultiplier
+        }
     }
 
     LazyColumn(
