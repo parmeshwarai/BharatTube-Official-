@@ -1782,7 +1782,7 @@ class BharatTubeRepository(
         val totalVideos = dao.countVideosSync()
         val totalChannels = dao.countChannelsSync()
 
-        val replyText = chhotuBackendClient.generateInAppReply(
+        val replyResult = chhotuBackendClient.generateAssistantReply(
             userMessage = text,
             isAdmin = user.isAdmin,
             languageCode = languageCode,
@@ -1801,13 +1801,15 @@ class BharatTubeRepository(
                 id = "cmsg_${UUID.randomUUID().toString().take(8)}",
                 userId = user.uid,
                 role = "CHHOTU_AI",
-                text = replyText,
+                text = replyResult.text,
                 languageCode = languageCode,
-                sourceMode = "IN_APP_CHHOTU"
+                sourceMode = replyResult.sourceMode
             )
         )
         return Result.success(Unit)
     }
+
+    fun isOpenAiAssistantConfigured(): Boolean = chhotuBackendClient.isOpenAiConfigured()
 
     suspend fun clearChhotuHistory(userId: String) {
         dao.clearChhotuChatHistory(userId)

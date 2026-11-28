@@ -24,7 +24,14 @@ data class BackendConnectionState(
     val latencyMs: Long? = null,
     val endpointMasked: String = "Not Configured",
     val lastCheckedAt: Long = System.currentTimeMillis(),
-    val errorDetail: String = ""
+    val errorDetail: String = "",
+    val openAiConfigured: Boolean = false,
+    val openAiStatusLabel: String = "Awaiting OPENAI_API_KEY in Secrets"
+)
+
+data class ChhotuReplyResult(
+    val text: String,
+    val sourceMode: String
 )
 
 data class SystemHealthSnapshot(

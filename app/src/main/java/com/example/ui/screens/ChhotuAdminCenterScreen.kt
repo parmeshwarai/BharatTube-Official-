@@ -212,7 +212,11 @@ fun ChhotuAdminCenterScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 color = EmeraldVerified
                                             )
-                                            Text("Mode: ${backend?.endpointMasked ?: "BharatTube On-Device Engine (No Key Required)"}", style = MaterialTheme.typography.bodySmall)
+                                            Text("Mode: ${backend?.endpointMasked ?: "BharatTube On-Device Engine"}", style = MaterialTheme.typography.bodySmall)
+                                            Text(
+                                                "OpenAI ChatGPT: ${backend?.openAiStatusLabel ?: "Awaiting OPENAI_API_KEY in Secrets"}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
                                             Text("Last System Check: $lastCheckStr", style = MaterialTheme.typography.labelSmall)
                                         }
                                     }

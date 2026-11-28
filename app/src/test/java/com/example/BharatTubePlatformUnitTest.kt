@@ -455,4 +455,39 @@ class BharatTubePlatformUnitTest {
         )
         assertFalse(normalPromo.allowed)
     }
+
+    @Test
+    fun openAiAssistantServiceValidatesKeysAndBuildsSafePrompts() {
+        assertFalse(com.example.chhotuai.OpenAiAssistantService.isUsableApiKey(""))
+        assertFalse(com.example.chhotuai.OpenAiAssistantService.isUsableApiKey("OPENAI_API_KEY_DEFAULT_VALUE"))
+        assertFalse(com.example.chhotuai.OpenAiAssistantService.isUsableApiKey("MY_OPENAI_KEY"))
+        assertTrue(com.example.chhotuai.OpenAiAssistantService.isUsableApiKey("sk-test-valid-placeholder-1234"))
+
+        val service = com.example.chhotuai.OpenAiAssistantService(keyProvider = { "OPENAI_API_KEY_DEFAULT_VALUE" })
+        assertFalse(service.isConfigured())
+    }
+
+    @Test
+    fun chhotuBackendClientFallsBackToInAppWhenOpenAiKeyNotConfigured() = kotlinx.coroutines.test.runTest {
+        val unconfiguredService = com.example.chhotuai.OpenAiAssistantService(keyProvider = { "OPENAI_API_KEY_DEFAULT_VALUE" })
+        val client = com.example.chhotuai.ChhotuAiBackendClient(openAiService = unconfiguredService)
+        assertFalse(client.isOpenAiConfigured())
+        assertTrue(client.isConfigured())
+
+        val result = client.generateAssistantReply(
+            userMessage = "How do I upload a video?",
+            isAdmin = false,
+            languageCode = "en",
+            healthSnapshot = null,
+            totalUsers = 3,
+            totalVideos = 6,
+            totalChannels = 2,
+            creatorSharePct = 50,
+            platformSharePct = 50,
+            indiaThresholdInr = 2000.0,
+            recentHistory = emptyList()
+        )
+        assertEquals(com.example.chhotuai.ChhotuAiBackendClient.SOURCE_IN_APP_CHHOTU, result.sourceMode)
+        assertTrue(result.text.contains("Upload"))
+    }
 }

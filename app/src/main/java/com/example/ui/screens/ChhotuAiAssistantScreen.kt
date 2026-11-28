@@ -30,12 +30,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
@@ -69,11 +71,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.example.chhotuai.ChhotuAiBackendClient
 import com.example.chhotuai.SystemHealthSnapshot
 import com.example.data.model.ChhotuChatMessageEntity
 import com.example.data.model.PlatformSettingsEntity
@@ -81,6 +86,7 @@ import com.example.data.model.UserProfileEntity
 import com.example.ui.theme.AmberGold
 import com.example.ui.theme.EmeraldVerified
 import com.example.ui.theme.LotusCoral
+import com.example.ui.theme.RoyalIndigo
 import com.example.ui.theme.SaffronFlame
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -102,6 +108,8 @@ fun ChhotuAiAssistantScreen(
     onShowSnackbar: (String) -> Unit
 ) {
     val context = LocalContext.current
+    @Suppress("DEPRECATION")
+    val clipboardManager = LocalClipboardManager.current
     var selectedLang by remember(defaultLanguage) {
         mutableStateOf(if (defaultLanguage == "hi") "hi" else "en")
     }
@@ -206,8 +214,7 @@ fun ChhotuAiAssistantScreen(
         }
     }
 
-    val backendOnline = healthSnapshot?.backendState?.isOnline == true
-    val backendConfigured = healthSnapshot?.backendState?.isConfigured == true
+    val openAiConnected = healthSnapshot?.backendState?.openAiConfigured == true
 
     Scaffold(
         topBar = {
@@ -227,13 +234,14 @@ fun ChhotuAiAssistantScreen(
                         Column {
                             Text("Chhotu AI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                text = if (!settings.chhotuAiEnabled) {
-                                    "Paused by Admin"
-                                } else {
-                                    "Online • Built-in In-App Assistant (No Key Needed)"
+                                text = when {
+                                    !settings.chhotuAiEnabled -> "Paused by Admin"
+                                    openAiConnected -> "Online • OpenAI ChatGPT + Chhotu AI"
+                                    else -> "Online • Built-in Chhotu AI (Add OPENAI_API_KEY in Secrets)"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (!settings.chhotuAiEnabled) LotusCoral else EmeraldVerified
+                                color = if (!settings.chhotuAiEnabled) LotusCoral else EmeraldVerified,
+                                maxLines = 1
                             )
                         }
                     }
@@ -313,9 +321,11 @@ fun ChhotuAiAssistantScreen(
                 }
             }
 
-            // Quick Support Guide Chips
+            // Quick Support + ChatGPT Creative Prompt Chips
             val quickTopics = if (selectedLang == "hi") {
                 listOf(
+                    "एक वायरल Video Script लिखो",
+                    "Video Title और Description सुझाओ",
                     "Account कैसे बनाएँ?",
                     "Channel और Logo कैसे लगाएँ?",
                     "Video Upload कैसे करें?",
@@ -326,6 +336,8 @@ fun ChhotuAiAssistantScreen(
                 )
             } else {
                 listOf(
+                    "Write a viral video script",
+                    "Suggest catchy titles & tags",
                     "How to create Account?",
                     "How to create Channel?",
                     "How to upload Video?",
@@ -372,21 +384,25 @@ fun ChhotuAiAssistantScreen(
                                 )
                                 Text(
                                     text = if (selectedLang == "hi") {
-                                        "BharatTube का Official AI Assistant. आपकी चैट हिस्ट्री केवल आपके खाते (${user?.handle ?: ""}) में सुरक्षित रहती है। नीचे माइक दबाकर बोलें या कोई भी सवाल पूछें।"
+                                        "BharatTube का Official AI Assistant (OpenAI ChatGPT + Built-in Chhotu AI)। आपकी चैट हिस्ट्री केवल आपके खाते (${user?.handle ?: ""}) में सुरक्षित रहती है। नीचे माइक दबाकर बोलें या कोई भी सवाल पूछें।"
                                     } else {
-                                        "BharatTube's Official AI Assistant. Your chat history is isolated to your profile (${user?.handle ?: ""}). Tap a guide above, type, or use the mic button."
+                                        "BharatTube's Official AI Assistant (OpenAI ChatGPT + Built-in Chhotu AI). Your chat history is isolated to your profile (${user?.handle ?: ""}). Tap a chip above, type, or use the mic button."
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Surface(
-                                    color = EmeraldVerified.copy(alpha = 0.14f),
+                                    color = if (openAiConnected) EmeraldVerified.copy(alpha = 0.14f) else AmberGold.copy(alpha = 0.14f),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Text(
-                                        text = "Chhotu AI Engine: Online directly inside BharatTube (Zero API keys or Secrets required).",
+                                        text = if (openAiConnected) {
+                                            "Chhotu AI + OpenAI ChatGPT: Connected securely via OPENAI_API_KEY Secret."
+                                        } else {
+                                            "Chhotu AI Built-in Engine: Online. Add OPENAI_API_KEY in AI Studio Secrets for full ChatGPT replies."
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = EmeraldVerified,
+                                        color = if (openAiConnected) EmeraldVerified else AmberGold,
                                         modifier = Modifier.padding(10.dp)
                                     )
                                 }
@@ -424,7 +440,7 @@ fun ChhotuAiAssistantScreen(
                                 else -> MaterialTheme.colorScheme.surface
                             },
                             tonalElevation = if (isUser) 0.dp else 2.dp,
-                            modifier = Modifier.widthIn(max = 310.dp)
+                            modifier = Modifier.widthIn(max = 316.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (!isUser) {
@@ -435,32 +451,57 @@ fun ChhotuAiAssistantScreen(
                                     ) {
                                         Text(
                                             text = when (msg.sourceMode) {
-                                                "IN_APP_CHHOTU" -> "Chhotu AI • Built-in"
+                                                ChhotuAiBackendClient.SOURCE_OPENAI_CHATGPT -> "Chhotu AI • ChatGPT (OpenAI)"
+                                                ChhotuAiBackendClient.SOURCE_IN_APP_CHHOTU -> "Chhotu AI • Built-in"
                                                 "SECURITY_BLOCK" -> "Chhotu AI • Security Policy"
                                                 else -> "Chhotu AI • Assistant"
                                             },
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (msg.sourceMode == "SECURITY_BLOCK") LotusCoral else SaffronFlame
+                                            color = when (msg.sourceMode) {
+                                                "SECURITY_BLOCK" -> LotusCoral
+                                                ChhotuAiBackendClient.SOURCE_OPENAI_CHATGPT -> RoyalIndigo
+                                                else -> SaffronFlame
+                                            }
                                         )
-                                        IconButton(
-                                            onClick = { speakText(msg.text, msg.languageCode) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.AutoMirrored.Filled.VolumeUp,
-                                                contentDescription = "Listen to Chhotu AI response",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = SaffronFlame
-                                            )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = {
+                                                    clipboardManager.setText(AnnotatedString(msg.text))
+                                                    onShowSnackbar(
+                                                        if (selectedLang == "hi") "जवाब कॉपी हो गया" else "Response copied"
+                                                    )
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.ContentCopy,
+                                                    contentDescription = "Copy Chhotu AI response",
+                                                    modifier = Modifier.size(15.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { speakText(msg.text, msg.languageCode) },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Filled.VolumeUp,
+                                                    contentDescription = "Listen to Chhotu AI response",
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = SaffronFlame
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                                Text(
-                                    text = msg.text,
-                                    color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                                SelectionContainer {
+                                    Text(
+                                        text = msg.text,
+                                        color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                                 Text(
                                     text = timeLabel,
                                     style = MaterialTheme.typography.labelSmall,

@@ -396,13 +396,18 @@ class ChhotuDiagnosticsEngine(
             )
         }
 
-        // 15. Server (In-App Chhotu AI Runtime)
+        // 15. Server (In-App Chhotu AI + OpenAI API Runtime)
         items += if (backendState.isOnline) {
+            val openAiSummary = if (backendState.openAiConfigured) {
+                "OpenAI ChatGPT API connected via OPENAI_API_KEY Secret + Built-in Chhotu AI active."
+            } else {
+                "In-App Chhotu AI active (add OPENAI_API_KEY in AI Studio Secrets to enable OpenAI ChatGPT)."
+            }
             AppCheckItem(
                 moduleName = "Server",
                 category = "Infrastructure",
                 status = CheckStatus.CONNECTED,
-                detail = "In-App Chhotu AI & Local Runtime active (no external API key required)."
+                detail = openAiSummary
             )
         } else {
             AppCheckItem(
@@ -415,7 +420,7 @@ class ChhotuDiagnosticsEngine(
             )
         }
 
-        // 16. API (In-App Chhotu AI Command & Diagnostics Bridge)
+        // 16. API (In-App Chhotu AI + OpenAI ChatGPT Bridge)
         items += if (dbError != null) {
             AppCheckItem(
                 moduleName = "API",
@@ -426,11 +431,16 @@ class ChhotuDiagnosticsEngine(
                 solution = "Verify local database health."
             )
         } else {
+            val apiDetail = if (backendState.openAiConfigured) {
+                "OpenAI HTTPS Chat Completions (OPENAI_API_KEY) + In-App Chhotu AI Bridge active."
+            } else {
+                "In-App Chhotu AI Bridge active (${backendState.latencyMs ?: 1}ms • OpenAI awaiting OPENAI_API_KEY in Secrets)."
+            }
             AppCheckItem(
                 moduleName = "API",
                 category = "Infrastructure",
                 status = CheckStatus.CONNECTED,
-                detail = "In-App Chhotu AI API Bridge active (${backendState.latencyMs ?: 1}ms • key-free)."
+                detail = apiDetail
             )
         }
 
