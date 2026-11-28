@@ -36,6 +36,7 @@ import com.example.ui.components.BharatTab
 import com.example.ui.components.BharatTubeBottomBar
 import com.example.ui.components.BharatTubeTopBar
 import com.example.ui.components.CreateOptionsBottomSheet
+import com.example.ui.screens.AboutChannelScreen
 import com.example.ui.screens.AdvertiserScreen
 import com.example.ui.screens.CameraCaptureMode
 import com.example.ui.screens.CameraCaptureScreen
@@ -46,13 +47,17 @@ import com.example.ui.screens.ChhotuAiAssistantScreen
 import com.example.ui.screens.CreateChannelScreen
 import com.example.ui.screens.CreatePostScreen
 import com.example.ui.screens.CreatorStudioScreen
+import com.example.ui.screens.EditChannelScreen
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.LiveStreamScreen
 import com.example.ui.screens.NotificationsScreen
+import com.example.ui.screens.ProfileMenuScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.SearchScreen
+import com.example.ui.screens.SettingDetailScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.ShortsScreen
 import com.example.ui.screens.SubscriptionsScreen
 import com.example.ui.screens.SuperAdminScreen
@@ -60,6 +65,7 @@ import com.example.ui.screens.SupportScreen
 import com.example.ui.screens.UploadDetailsScreen
 import com.example.ui.screens.UploadScreen
 import com.example.ui.screens.VideoPlayerScreen
+import com.example.ui.screens.YourVideosScreen
 import com.example.ui.theme.BharatTubeTheme
 import com.example.ui.viewmodel.BharatTubeViewModel
 
@@ -171,8 +177,7 @@ fun BharatTubeApp(
     val isTopLevel = currentRoute in topLevelRoutes || currentRoute?.startsWith("shorts") == true
     val showTopBar = currentRoute in setOf(
         BharatTab.HOME.route,
-        BharatTab.SUBSCRIPTIONS.route,
-        BharatTab.PROFILE.route
+        BharatTab.SUBSCRIPTIONS.route
     )
 
     Scaffold(
@@ -383,24 +388,161 @@ fun BharatTubeApp(
                         user = currentUser,
                         allUsers = allUsers,
                         myChannels = myChannels,
+                        allVideos = allVideos,
+                        playlists = playlists,
+                        playlistRefs = playlistRefs,
                         prefs = prefs,
+                        onSelectChannel = viewModel::setActiveChannel,
                         onCreateChannel = { navController.navigate("create_channel") },
-                        onOpenChannel = { chId -> navController.navigate("channel/$chId") },
+                        onEditChannel = { navController.navigate("edit_channel") },
+                        onManageVideos = { navController.navigate("your_videos") },
+                        onOpenAbout = { chId -> navController.navigate("about_channel/$chId") },
+                        onOpenProfileMenu = { navController.navigate("profile_menu") },
+                        onOpenSettings = { navController.navigate("settings") },
+                        onOpenSearch = { navController.navigate("search") },
+                        onOpenChhotuAi = { navController.navigate("chhotu_ai") },
+                        onOpenVideo = openVideoWithAd,
+                        onOpenPlaylistsLibrary = { navController.navigate("library?tab=3") },
+                        onOpenUpload = { navController.navigate("camera?mode=VIDEO") },
+                        onSwitchUser = viewModel::switchUser,
+                        onCreateLocalAccount = viewModel::createLocalAccount,
+                        onSignInBack = viewModel::signInBack
+                    )
+                }
+
+                composable("profile_menu") {
+                    val activeChannel = myChannels.firstOrNull { it.id == prefs.activeChannelId }
+                        ?: myChannels.firstOrNull()
+                    ProfileMenuScreen(
+                        user = currentUser,
+                        activeChannel = activeChannel,
+                        allUsers = allUsers,
+                        prefs = prefs,
+                        onBack = { navController.popBackStack() },
+                        onManageAccount = { navController.navigate("settings/account") },
+                        onOpenYourChannel = {
+                            navController.navigate(BharatTab.PROFILE.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onOpenHistory = { navController.navigate("library?tab=1") },
+                        onOpenYourVideos = { navController.navigate("your_videos") },
+                        onOpenDownloads = { navController.navigate("settings/downloads") },
+                        onOpenWatchLater = { navController.navigate("library?tab=2") },
+                        onOpenSettings = { navController.navigate("settings") },
+                        onOpenHelpFeedback = { navController.navigate("support") },
                         onOpenCreatorStudio = { navController.navigate("studio") },
-                        onOpenLibrary = { navController.navigate("library?tab=1") },
+                        onOpenChhotuAi = { navController.navigate("chhotu_ai") },
+                        onOpenChat = { navController.navigate("chat") },
                         onOpenAdvertiser = { navController.navigate("advertiser") },
                         onOpenSuperAdmin = { navController.navigate("admin") },
-                        onOpenChhotuAi = { navController.navigate("chhotu_ai") },
                         onOpenChhotuAdmin = { navController.navigate("chhotu_admin") },
-                        onOpenChat = { navController.navigate("chat") },
-                        onOpenSupport = { navController.navigate("support") },
-                        onUpdateProfile = viewModel::updateUserProfile,
-                        onCreateLocalAccount = viewModel::createLocalAccount,
                         onSwitchUser = viewModel::switchUser,
-                        onToggleRestrictedMode = viewModel::toggleRestrictedMode,
+                        onCreateLocalAccount = viewModel::createLocalAccount,
+                        onSignOut = viewModel::signOut
+                    )
+                }
+
+                composable("edit_channel") {
+                    val activeChannel = myChannels.firstOrNull { it.id == prefs.activeChannelId }
+                        ?: myChannels.firstOrNull()
+                    EditChannelScreen(
+                        channel = activeChannel,
+                        onBack = { navController.popBackStack() },
+                        onSave = viewModel::saveChannelEdit
+                    )
+                }
+
+                composable("your_videos") {
+                    val activeChannel = myChannels.firstOrNull { it.id == prefs.activeChannelId }
+                        ?: myChannels.firstOrNull()
+                    YourVideosScreen(
+                        channel = activeChannel,
+                        myChannels = myChannels,
+                        allVideos = allVideos,
+                        onBack = { navController.popBackStack() },
+                        onUploadClick = { navController.navigate("camera?mode=VIDEO") },
+                        onOpenProfileMenu = { navController.navigate("profile_menu") },
+                        onOpenVideo = openVideoWithAd,
+                        onUpdateVideo = viewModel::updateVideoMetadata,
+                        onToggleHideVideo = viewModel::toggleHideVideo,
+                        onDeleteVideo = viewModel::deleteVideo
+                    )
+                }
+
+                composable(
+                    route = "about_channel/{channelId}",
+                    arguments = listOf(navArgument("channelId") { type = NavType.StringType })
+                ) { entry ->
+                    val chId = entry.arguments?.getString("channelId") ?: ""
+                    val targetChannel = allChannels.firstOrNull { it.id == chId }
+                        ?: myChannels.firstOrNull()
+                    val chVideos = allVideos.filter { it.channelId == targetChannel?.id }
+                    AboutChannelScreen(
+                        channel = targetChannel,
+                        channelVideos = chVideos,
+                        countryCode = prefs.preferredCountry,
+                        onBack = { navController.popBackStack() },
+                        onReportChannel = viewModel::submitReport
+                    )
+                }
+
+                composable("settings") {
+                    SettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenSection = { section -> navController.navigate("settings/$section") }
+                    )
+                }
+
+                composable(
+                    route = "settings/{section}",
+                    arguments = listOf(navArgument("section") { type = NavType.StringType })
+                ) { entry ->
+                    val section = entry.arguments?.getString("section") ?: "general"
+                    val activeChannel = myChannels.firstOrNull { it.id == prefs.activeChannelId }
+                        ?: myChannels.firstOrNull()
+                    SettingDetailScreen(
+                        sectionId = section,
+                        user = currentUser,
+                        activeChannel = activeChannel,
+                        allUsers = allUsers,
+                        allVideos = allVideos,
+                        prefs = prefs,
+                        onBack = { navController.popBackStack() },
                         onToggleDarkTheme = viewModel::toggleDarkTheme,
                         onSelectLanguage = viewModel::setLanguage,
-                        onSelectCountry = viewModel::setCountry
+                        onSelectCountry = viewModel::setCountry,
+                        onToggleRestrictedMode = viewModel::toggleRestrictedMode,
+                        onUpdateProfile = viewModel::updateUserProfile,
+                        onSwitchUser = viewModel::switchUser,
+                        onCreateLocalAccount = viewModel::createLocalAccount,
+                        onOpenEditChannel = { navController.navigate("edit_channel") },
+                        onOpenCreatorStudio = { navController.navigate("studio") },
+                        onOpenNotificationsCenter = { navController.navigate("notifications") },
+                        onOpenHistoryLibrary = { navController.navigate("library?tab=1") },
+                        onOpenSupport = { navController.navigate("support") },
+                        onOpenChhotuAi = { navController.navigate("chhotu_ai") },
+                        onOpenVideo = openVideoWithAd,
+                        onSetPushOptIn = viewModel::setPushOptIn,
+                        onSetNotifyUploads = viewModel::setNotifyUploads,
+                        onSetNotifyComments = viewModel::setNotifyComments,
+                        onSetNotifyLive = viewModel::setNotifyLive,
+                        onSetPlaybackAutoPlay = viewModel::setPlaybackAutoPlayNext,
+                        onSetPlaybackQuality = viewModel::setPlaybackDefaultQuality,
+                        onSetPlaybackCaptions = viewModel::setPlaybackCaptionsEnabled,
+                        onSetPlaybackDataSaver = viewModel::setPlaybackDataSaver,
+                        onSetDownloadsWifiOnly = viewModel::setDownloadsWifiOnly,
+                        onSetDownloadsQuality = viewModel::setDownloadsQuality,
+                        onToggleDownloadVideo = viewModel::toggleDownloadVideo,
+                        onClearDownloads = viewModel::clearDownloads,
+                        onSetPrivacySubsPrivate = viewModel::setPrivacySubscriptionsPrivate,
+                        onSetPrivacyPlaylistsPrivate = viewModel::setPrivacyPlaylistsPrivate,
+                        onToggleHistoryPaused = viewModel::toggleHistoryPaused,
+                        onClearWatchHistory = viewModel::clearWatchHistory,
+                        onClearSearchHistory = viewModel::clearSearchHistory,
+                        onSignOut = viewModel::signOut
                     )
                 }
 

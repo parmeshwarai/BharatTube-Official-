@@ -101,6 +101,12 @@ interface BharatTubeDao {
     @Query("UPDATE videos SET liveViewerCount = :viewers WHERE id = :videoId")
     suspend fun updateLiveViewerCount(videoId: String, viewers: Int)
 
+    @Query("UPDATE videos SET channelName = :channelName, channelHandle = :channelHandle WHERE channelId = :channelId")
+    suspend fun updateChannelInfoOnVideos(channelId: String, channelName: String, channelHandle: String)
+
+    @Query("UPDATE videos SET visibility = :visibility WHERE id = :videoId")
+    suspend fun updateVideoVisibility(videoId: String, visibility: String)
+
     @Query("DELETE FROM videos WHERE id = :videoId")
     suspend fun deleteVideo(videoId: String)
 

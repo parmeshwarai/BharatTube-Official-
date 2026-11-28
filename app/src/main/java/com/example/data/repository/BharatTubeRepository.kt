@@ -134,6 +134,22 @@ class BharatTubeRepository(
     suspend fun setHistoryPaused(paused: Boolean) = prefsRepo.setHistoryPaused(paused)
     suspend fun setRestrictedMode(enabled: Boolean) = prefsRepo.setRestrictedMode(enabled)
     suspend fun setActiveChannel(channelId: String) = prefsRepo.setActiveChannel(channelId)
+    suspend fun setPushOptIn(enabled: Boolean) = prefsRepo.setPushOptIn(enabled)
+    suspend fun setNotifyUploads(enabled: Boolean) = prefsRepo.setNotifyUploads(enabled)
+    suspend fun setNotifyComments(enabled: Boolean) = prefsRepo.setNotifyComments(enabled)
+    suspend fun setNotifyLive(enabled: Boolean) = prefsRepo.setNotifyLive(enabled)
+    suspend fun setPlaybackAutoPlayNext(enabled: Boolean) = prefsRepo.setPlaybackAutoPlayNext(enabled)
+    suspend fun setPlaybackDefaultQuality(quality: String) = prefsRepo.setPlaybackDefaultQuality(quality)
+    suspend fun setPlaybackCaptionsEnabled(enabled: Boolean) = prefsRepo.setPlaybackCaptionsEnabled(enabled)
+    suspend fun setPlaybackDataSaver(enabled: Boolean) = prefsRepo.setPlaybackDataSaver(enabled)
+    suspend fun setDownloadsWifiOnly(enabled: Boolean) = prefsRepo.setDownloadsWifiOnly(enabled)
+    suspend fun setDownloadsQuality(quality: String) = prefsRepo.setDownloadsQuality(quality)
+    suspend fun toggleDownloadedVideo(videoId: String): Boolean = prefsRepo.toggleDownloadedVideo(videoId)
+    suspend fun clearDownloadedVideos() = prefsRepo.clearDownloadedVideos()
+    suspend fun setPrivacySubscriptionsPrivate(isPrivate: Boolean) = prefsRepo.setPrivacySubscriptionsPrivate(isPrivate)
+    suspend fun setPrivacyPlaylistsPrivate(isPrivate: Boolean) = prefsRepo.setPrivacyPlaylistsPrivate(isPrivate)
+    suspend fun signOut() = prefsRepo.setSignedOut(true)
+    suspend fun signInBack() = prefsRepo.setSignedOut(false)
 
     suspend fun createOrSwitchLocalAccount(
         username: String,
@@ -180,6 +196,82 @@ class BharatTubeRepository(
 
     suspend fun updateChannel(channel: ChannelEntity) {
         dao.upsertChannel(channel)
+        dao.updateChannelInfoOnVideos(channel.id, channel.name, channel.handle)
+    }
+
+    suspend fun updateChannelDetails(
+        channel: ChannelEntity,
+        name: String,
+        handle: String,
+        description: String,
+        socialLinks: String,
+        avatarUri: String,
+        bannerUri: String
+    ): Result<ChannelEntity> {
+        val cleanName = name.trim()
+        val rawHandle = handle.trim().removePrefix("@").replace(Regex("[^a-zA-Z0-9_.]"), "")
+        if (cleanName.isBlank()) {
+            return Result.failure(IllegalArgumentException("Channel name cannot be empty"))
+        }
+        if (rawHandle.length < 3) {
+            return Result.failure(IllegalArgumentException("Handle must be at least 3 characters"))
+        }
+        val normalizedHandle = "@$rawHandle"
+        val existing = dao.findChannelByHandle(normalizedHandle)
+        if (existing != null && existing.id != channel.id) {
+            return Result.failure(IllegalArgumentException("Handle $normalizedHandle is already taken"))
+        }
+        val updated = channel.copy(
+            name = cleanName,
+            handle = normalizedHandle,
+            description = description.trim().take(500),
+            socialLinks = socialLinks.trim(),
+            avatarUri = avatarUri,
+            bannerUri = bannerUri.ifBlank { "drawable:img_hero_creators" }
+        )
+        dao.upsertChannel(updated)
+        dao.updateChannelInfoOnVideos(updated.id, updated.name, updated.handle)
+        dao.getUser(channel.ownerUserId)?.let { owner ->
+            dao.upsertUser(
+                owner.copy(
+                    avatarUri = updated.avatarUri,
+                    bannerUri = updated.bannerUri
+                )
+            )
+        }
+        return Result.success(updated)
+    }
+
+    suspend fun updateVideoMetadata(
+        videoId: String,
+        title: String,
+        description: String,
+        visibility: VideoVisibility,
+        category: String
+    ): Result<Unit> {
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank()) {
+            return Result.failure(IllegalArgumentException("Video title cannot be empty"))
+        }
+        val existing = dao.getVideo(videoId)
+            ?: return Result.failure(IllegalStateException("Video not found"))
+        dao.upsertVideo(
+            existing.copy(
+                title = cleanTitle,
+                description = description.trim(),
+                visibility = visibility.name,
+                category = category
+            )
+        )
+        return Result.success(Unit)
+    }
+
+    suspend fun setVideoVisibility(videoId: String, visibility: VideoVisibility) {
+        dao.updateVideoVisibility(videoId, visibility.name)
+    }
+
+    suspend fun deleteVideo(videoId: String) {
+        dao.deleteVideo(videoId)
     }
 
     suspend fun createChannel(

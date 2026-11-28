@@ -7,6 +7,8 @@ import com.example.chhotuai.ChhotuSecurityGuard
 import com.example.chhotuai.ChhotuUserSupportEngine
 import com.example.data.model.BharatTubeCatalog
 import com.example.ui.components.BharatTubeShareHelper
+import com.example.ui.components.ChannelLinkItem
+import com.example.ui.components.ProfileFormatters
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -219,5 +221,29 @@ class BharatTubePlatformUnitTest {
             historyCount = 0
         )
         assertTrue(adminReply.contains("50%"))
+    }
+
+    @Test
+    fun profileSocialLinksParseAndSerializeRoundTrip() {
+        val raw = "Website|bharattube.in/@aaravtech\nInstagram|instagram.com/aarav"
+        val parsed = ProfileFormatters.parseSocialLinks(raw)
+        assertEquals(2, parsed.size)
+        assertEquals("Website", parsed[0].label)
+        assertEquals("bharattube.in/@aaravtech", parsed[0].url)
+        assertEquals("Instagram", parsed[1].label)
+        assertEquals("instagram.com/aarav", parsed[1].url)
+
+        val serialized = ProfileFormatters.serializeSocialLinks(
+            listOf(ChannelLinkItem("Website", "bharattube.in"), ChannelLinkItem("X (Twitter)", "x.com/bt"))
+        )
+        assertEquals("Website|bharattube.in\nX (Twitter)|x.com/bt", serialized)
+    }
+
+    @Test
+    fun profileRelativeDateFormatsCorrectly() {
+        val now = 1_700_000_000_000L
+        assertEquals("Just now", ProfileFormatters.formatRelativeDate(now - 10_000L, now))
+        assertEquals("2 days ago", ProfileFormatters.formatRelativeDate(now - 2 * 86_400_000L, now))
+        assertEquals("1 week ago", ProfileFormatters.formatRelativeDate(now - 7 * 86_400_000L, now))
     }
 }

@@ -237,6 +237,100 @@ class BharatTubeViewModel(
         }
     }
 
+    fun setPushOptIn(enabled: Boolean) {
+        viewModelScope.launch { repository.setPushOptIn(enabled) }
+    }
+
+    fun setNotifyUploads(enabled: Boolean) {
+        viewModelScope.launch { repository.setNotifyUploads(enabled) }
+    }
+
+    fun setNotifyComments(enabled: Boolean) {
+        viewModelScope.launch { repository.setNotifyComments(enabled) }
+    }
+
+    fun setNotifyLive(enabled: Boolean) {
+        viewModelScope.launch { repository.setNotifyLive(enabled) }
+    }
+
+    fun setPlaybackAutoPlayNext(enabled: Boolean) {
+        viewModelScope.launch { repository.setPlaybackAutoPlayNext(enabled) }
+    }
+
+    fun setPlaybackDefaultQuality(quality: String) {
+        viewModelScope.launch {
+            repository.setPlaybackDefaultQuality(quality)
+            _snackbarMessage.value = "Default playback quality set to $quality"
+        }
+    }
+
+    fun setPlaybackCaptionsEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setPlaybackCaptionsEnabled(enabled) }
+    }
+
+    fun setPlaybackDataSaver(enabled: Boolean) {
+        viewModelScope.launch { repository.setPlaybackDataSaver(enabled) }
+    }
+
+    fun setDownloadsWifiOnly(enabled: Boolean) {
+        viewModelScope.launch { repository.setDownloadsWifiOnly(enabled) }
+    }
+
+    fun setDownloadsQuality(quality: String) {
+        viewModelScope.launch {
+            repository.setDownloadsQuality(quality)
+            _snackbarMessage.value = "Download quality set to $quality"
+        }
+    }
+
+    fun toggleDownloadVideo(video: VideoEntity) {
+        viewModelScope.launch {
+            val added = repository.toggleDownloadedVideo(video.id)
+            _snackbarMessage.value = if (added) {
+                "Saved '${video.title}' to Downloads"
+            } else {
+                "Removed '${video.title}' from Downloads"
+            }
+        }
+    }
+
+    fun clearDownloads() {
+        viewModelScope.launch {
+            repository.clearDownloadedVideos()
+            _snackbarMessage.value = "All downloads cleared"
+        }
+    }
+
+    fun setPrivacySubscriptionsPrivate(isPrivate: Boolean) {
+        viewModelScope.launch { repository.setPrivacySubscriptionsPrivate(isPrivate) }
+    }
+
+    fun setPrivacyPlaylistsPrivate(isPrivate: Boolean) {
+        viewModelScope.launch { repository.setPrivacyPlaylistsPrivate(isPrivate) }
+    }
+
+    fun setActiveChannel(channelId: String) {
+        viewModelScope.launch { repository.setActiveChannel(channelId) }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            repository.signOut()
+            _snackbarMessage.value = "Signed out of BharatTube"
+        }
+    }
+
+    fun signInBack(uid: String? = null) {
+        viewModelScope.launch {
+            if (uid != null) {
+                repository.switchExistingUser(uid)
+            } else {
+                repository.signInBack()
+            }
+            _snackbarMessage.value = "Signed in to BharatTube"
+        }
+    }
+
     fun createLocalAccount(
         username: String,
         email: String,
@@ -253,7 +347,10 @@ class BharatTubeViewModel(
     }
 
     fun switchUser(uid: String) {
-        viewModelScope.launch { repository.switchExistingUser(uid) }
+        viewModelScope.launch {
+            repository.switchExistingUser(uid)
+            _snackbarMessage.value = "Switched account"
+        }
     }
 
     fun updateUserProfile(user: UserProfileEntity) {
@@ -267,6 +364,71 @@ class BharatTubeViewModel(
         viewModelScope.launch {
             repository.updateChannel(channel)
             _snackbarMessage.value = "Channel branding updated"
+        }
+    }
+
+    fun saveChannelEdit(
+        channel: ChannelEntity,
+        name: String,
+        handle: String,
+        description: String,
+        socialLinks: String,
+        avatarUri: String,
+        bannerUri: String,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            repository.updateChannelDetails(
+                channel = channel,
+                name = name,
+                handle = handle,
+                description = description,
+                socialLinks = socialLinks,
+                avatarUri = avatarUri,
+                bannerUri = bannerUri
+            ).onSuccess {
+                _snackbarMessage.value = "Channel profile saved"
+                onSuccess()
+            }.onFailure {
+                _snackbarMessage.value = it.message ?: "Unable to save channel"
+            }
+        }
+    }
+
+    fun updateVideoMetadata(
+        videoId: String,
+        title: String,
+        description: String,
+        visibility: VideoVisibility,
+        category: String
+    ) {
+        viewModelScope.launch {
+            repository.updateVideoMetadata(videoId, title, description, visibility, category)
+                .onSuccess { _snackbarMessage.value = "Video updated" }
+                .onFailure { _snackbarMessage.value = it.message ?: "Could not update video" }
+        }
+    }
+
+    fun toggleHideVideo(video: VideoEntity) {
+        viewModelScope.launch {
+            val next = if (video.visibility == VideoVisibility.PRIVATE.name) {
+                VideoVisibility.PUBLIC
+            } else {
+                VideoVisibility.PRIVATE
+            }
+            repository.setVideoVisibility(video.id, next)
+            _snackbarMessage.value = if (next == VideoVisibility.PRIVATE) {
+                "Video hidden (set to Private)"
+            } else {
+                "Video is now Public"
+            }
+        }
+    }
+
+    fun deleteVideo(video: VideoEntity) {
+        viewModelScope.launch {
+            repository.deleteVideo(video.id)
+            _snackbarMessage.value = "Deleted '${video.title}'"
         }
     }
 
